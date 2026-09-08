@@ -58,6 +58,7 @@ class StorageService {
 
             return {
               ...veh,
+              media: veh.media || [],
               maintenance_modules: modules,
               service_history: rawHistory
             };
@@ -242,6 +243,54 @@ class StorageService {
     mod.last_service_date = dateStr;
 
     data.vehicles = recalculateVehicleMaintenance(data.vehicles, vehicleId, vehicle.current_odometer);
+    await this.saveData(data);
+    return data;
+  }
+
+  // ==========================================
+  // Vehicle Media (Photos & Invoices)
+  // ==========================================
+  async addVehicleMedia(vehicleId, mediaItem) {
+    const data = await this.getData();
+    const vehicle = data.vehicles.find(v => v.id === vehicleId);
+    if (!vehicle) throw new Error('Vehicle not found');
+
+    if (!vehicle.media) vehicle.media = [];
+    vehicle.media.push(mediaItem);
+
+    if (isSupabaseConfigured() && supabase) {
+      try {
+        await supabase
+          .from('vehicles')
+          .update({ media: vehicle.media, updated_at: new Date().toISOString() })
+          .eq('id', vehicleId);
+      } catch (err) {
+        console.error('[StorageService] Supabase media update error:', err.message);
+      }
+    }
+
+    await this.saveData(data);
+    return data;
+  }
+
+  async removeVehicleMedia(vehicleId, mediaId) {
+    const data = await this.getData();
+    const vehicle = data.vehicles.find(v => v.id === vehicleId);
+    if (!vehicle) throw new Error('Vehicle not found');
+
+    vehicle.media = (vehicle.media || []).filter(m => m.id !== mediaId);
+
+    if (isSupabaseConfigured() && supabase) {
+      try {
+        await supabase
+          .from('vehicles')
+          .update({ media: vehicle.media, updated_at: new Date().toISOString() })
+          .eq('id', vehicleId);
+      } catch (err) {
+        console.error('[StorageService] Supabase media remove error:', err.message);
+      }
+    }
+
     await this.saveData(data);
     return data;
   }

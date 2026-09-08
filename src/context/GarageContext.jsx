@@ -57,10 +57,29 @@ export function GarageProvider({ children }) {
     dispatch({ type: 'SET_VEHICLES', vehicles: data.vehicles });
   };
 
+  const addVehicleMedia = async (vehicleId, mediaItem) => {
+    const data = await StorageService.addVehicleMedia(vehicleId, mediaItem);
+    dispatch({ type: 'SET_VEHICLES', vehicles: data.vehicles });
+  };
+
+  const removeVehicleMedia = async (vehicleId, mediaId) => {
+    const data = await StorageService.removeVehicleMedia(vehicleId, mediaId);
+    dispatch({ type: 'SET_VEHICLES', vehicles: data.vehicles });
+  };
+
   const setActiveVehicle = (id) => dispatch({ type: 'SET_ACTIVE_VEHICLE', id });
 
   return (
-    <GarageContext.Provider value={{ ...state, addVehicle, addMaintenanceModule, updateOdometer, completeService, setActiveVehicle }}>
+    <GarageContext.Provider value={{
+      ...state,
+      addVehicle,
+      addMaintenanceModule,
+      updateOdometer,
+      completeService,
+      addVehicleMedia,
+      removeVehicleMedia,
+      setActiveVehicle
+    }}>
       {children}
     </GarageContext.Provider>
   );

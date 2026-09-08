@@ -73,3 +73,20 @@ CREATE POLICY "Allow all operations for development anon service history"
 CREATE INDEX IF NOT EXISTS idx_vehicles_user ON public.vehicles(user_id);
 CREATE INDEX IF NOT EXISTS idx_modules_vehicle ON public.maintenance_modules(vehicle_id);
 CREATE INDEX IF NOT EXISTS idx_history_vehicle ON public.service_history(vehicle_id);
+
+-- 6. Optional Vehicle Media Column
+ALTER TABLE public.vehicles ADD COLUMN IF NOT EXISTS media JSONB DEFAULT '[]'::jsonb;
+
+-- 7. Supabase Storage: 'vehicle-media' Bucket for Photos & Receipts
+-- Enables high-performance, compressed image storage
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('vehicle-media', 'vehicle-media', true)
+ON CONFLICT (id) DO NOTHING;
+
+CREATE POLICY "Public vehicle media read access"
+ON storage.objects FOR SELECT
+USING (bucket_id = 'vehicle-media');
+
+CREATE POLICY "Public vehicle media upload access"
+ON storage.objects FOR INSERT
+WITH CHECK (bucket_id = 'vehicle-media');
