@@ -46,79 +46,109 @@ export default function AddMaintenance() {
     navigate(`/vehicle/${vehicleId}`);
   };
 
-  if (!vehicle) return <div className="app-container px-3 pt-4 text-muted">Vehicle not found.</div>;
+  if (!vehicle) return (
+    <div className="app-container" style={{ paddingTop: 40 }}>
+      <p style={{ color: 'var(--text-muted)' }}>Vehicle not found.</p>
+    </div>
+  );
 
   return (
-    <div className="app-container px-3 pt-4">
-      <div className="d-flex align-items-center mb-4">
-        <button className="btn btn-link p-0 me-3" onClick={() => navigate(-1)} style={{ color: 'var(--text-secondary)' }}>
-          <ChevronLeft size={24} />
-        </button>
-        <div>
-          <h5 className="mb-0" style={{ fontWeight: 700 }}>Add Maintenance</h5>
-          <small className="text-muted">{vehicle.make} {vehicle.model}</small>
+    <div className="app-container" style={{ paddingTop: 0 }}>
+      {/* Header */}
+      <div className="page-header">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button
+            onClick={() => navigate(-1)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: 0 }}
+          >
+            <ChevronLeft size={22} />
+          </button>
+          <div>
+            <h1 className="page-title" style={{ fontSize: '1.3rem' }}>Add Maintenance</h1>
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+              {vehicle.make} {vehicle.model}
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Preset chips */}
-      <p className="text-muted small mb-2">Quick select or type custom:</p>
-      <div className="d-flex flex-wrap gap-2 mb-3">
+      <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', marginBottom: 10 }}>
+        Quick select or type custom:
+      </p>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
         {PRESET_ITEMS.map(p => (
           <button
             key={p}
             onClick={() => handlePreset(p)}
-            className="btn btn-sm"
-            style={{
-              borderRadius: 20,
-              fontSize: '0.75rem',
-              padding: '0.25rem 0.75rem',
-              background: selectedPreset === p ? 'var(--accent-color)' : 'rgba(255,255,255,0.07)',
-              color: selectedPreset === p ? '#fff' : 'var(--text-primary)',
-              border: 'none'
-            }}
+            className={`chip${selectedPreset === p ? ' active' : ''}`}
           >
             {p}
           </button>
         ))}
       </div>
 
-      <form className="garage-card" onSubmit={handleSubmit}>
-        <div className="mb-3">
-          <label className="form-label small text-muted">Item Name <span className="text-danger">*</span></label>
-          <input className="form-control" placeholder="e.g. Engine Oil" value={form.name}
-            onChange={e => { set('name', e.target.value); setSelectedPreset(''); }} required />
+      {/* Form */}
+      <form className="garage-card" style={{ padding: '20px' }} onSubmit={handleSubmit}>
+        <div style={{ marginBottom: 16 }}>
+          <label className="form-label" style={{ marginBottom: 6, display: 'block' }}>
+            Item Name <span style={{ color: 'var(--danger-color)' }}>*</span>
+          </label>
+          <input
+            className="form-control"
+            placeholder="e.g. Engine Oil"
+            value={form.name}
+            onChange={e => { set('name', e.target.value); setSelectedPreset(''); }}
+            required
+          />
         </div>
 
-        <p className="text-muted small mb-2" style={{ fontWeight: 600 }}>Remind me every:</p>
-        <div className="row g-2 mb-3">
-          <div className="col-6">
-            <label className="form-label small text-muted">Kilometres</label>
-            <input type="number" className="form-control" placeholder="2500"
-              value={form.interval_km} onChange={e => set('interval_km', e.target.value)} />
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', fontWeight: 600, marginBottom: 10 }}>
+          Remind me every:
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+          <div>
+            <label className="form-label" style={{ marginBottom: 6, display: 'block' }}>Kilometres</label>
+            <input
+              type="number" className="form-control" placeholder="2500"
+              value={form.interval_km} onChange={e => set('interval_km', e.target.value)}
+            />
           </div>
-          <div className="col-6">
-            <label className="form-label small text-muted">Months</label>
-            <input type="number" className="form-control" placeholder="6"
-              value={form.interval_months} onChange={e => set('interval_months', e.target.value)} />
-          </div>
-        </div>
-
-        <p className="text-muted small mb-2" style={{ fontWeight: 600 }}>Last serviced at:</p>
-        <div className="row g-2 mb-4">
-          <div className="col-6">
-            <label className="form-label small text-muted">Odometer (km)</label>
-            <input type="number" className="form-control" placeholder={vehicle.current_odometer}
-              value={form.last_service_km} onChange={e => set('last_service_km', e.target.value)} />
-          </div>
-          <div className="col-6">
-            <label className="form-label small text-muted">Date</label>
-            <input type="date" className="form-control"
-              value={form.last_service_date} onChange={e => set('last_service_date', e.target.value)} />
+          <div>
+            <label className="form-label" style={{ marginBottom: 6, display: 'block' }}>Months</label>
+            <input
+              type="number" className="form-control" placeholder="6"
+              value={form.interval_months} onChange={e => set('interval_months', e.target.value)}
+            />
           </div>
         </div>
 
-        <button className="btn btn-primary w-100" type="submit" disabled={saving}
-          style={{ borderRadius: 12, fontWeight: 600, padding: '0.75rem' }}>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', fontWeight: 600, marginBottom: 10 }}>
+          Last serviced at:
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
+          <div>
+            <label className="form-label" style={{ marginBottom: 6, display: 'block' }}>Odometer (km)</label>
+            <input
+              type="number" className="form-control" placeholder={vehicle.current_odometer}
+              value={form.last_service_km} onChange={e => set('last_service_km', e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="form-label" style={{ marginBottom: 6, display: 'block' }}>Date</label>
+            <input
+              type="date" className="form-control"
+              value={form.last_service_date} onChange={e => set('last_service_date', e.target.value)}
+            />
+          </div>
+        </div>
+
+        <button
+          className="btn-orange"
+          type="submit"
+          disabled={saving}
+          style={{ width: '100%', justifyContent: 'center', padding: '12px' }}
+        >
           {saving ? 'Saving…' : '+ Add to Schedule'}
         </button>
       </form>

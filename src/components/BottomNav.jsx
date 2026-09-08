@@ -1,30 +1,68 @@
 import React from 'react';
-import { NavLink } from 'react-router-dom';
-import { Home, Car, PlusCircle, Clock, User } from 'lucide-react';
+import { NavLink, Link } from 'react-router-dom';
+import { Home, Car, Clock, User, PlusCircle, Wrench, Settings } from 'lucide-react';
+
+const NAV_ITEMS = [
+  { to: '/',         label: 'Home',        icon: Home,        end: true },
+  { to: '/vehicles', label: 'Vehicles',    icon: Car },
+  { to: '/add-vehicle', label: 'Add',      icon: PlusCircle },
+  { to: '/history',  label: 'Maintenance', icon: Wrench },
+  { to: '/profile',  label: 'Profile',     icon: User },
+];
 
 export default function BottomNav() {
   return (
-    <nav className="bottom-nav">
-      <NavLink to="/" className={({ isActive }) => `nav-item-link ${isActive ? 'active' : ''}`} end>
-        <Home size={22} />
-        <span>Garage</span>
-      </NavLink>
-      <NavLink to="/vehicles" className={({ isActive }) => `nav-item-link ${isActive ? 'active' : ''}`}>
-        <Car size={22} />
-        <span>Vehicles</span>
-      </NavLink>
-      <NavLink to="/add-vehicle" className={({ isActive }) => `nav-item-link ${isActive ? 'active' : ''}`}>
-        <PlusCircle size={22} />
-        <span>Add</span>
-      </NavLink>
-      <NavLink to="/history" className={({ isActive }) => `nav-item-link ${isActive ? 'active' : ''}`}>
-        <Clock size={22} />
-        <span>History</span>
-      </NavLink>
-      <NavLink to="/profile" className={({ isActive }) => `nav-item-link ${isActive ? 'active' : ''}`}>
-        <User size={22} />
-        <span>Profile</span>
-      </NavLink>
-    </nav>
+    <>
+      {/* ── Sidebar (desktop ≥768px) ─────────────────────── */}
+      <aside className="sidebar">
+        {/* Logo */}
+        <div className="sidebar-logo">
+          <div className="logo-text">
+            <span style={{ display: 'inline-block' }}>
+              <span style={{ color: 'var(--accent-color)' }}>N</span>GINEBREAK
+            </span>
+          </div>
+          <div className="logo-sub">Your Vehicle. Your Story.</div>
+        </div>
+
+        {/* Main nav links */}
+        <nav className="sidebar-nav">
+          {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
+            <NavLink
+              key={to}
+              to={to}
+              end={end}
+              className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}
+            >
+              <Icon size={18} />
+              {label}
+            </NavLink>
+          ))}
+        </nav>
+
+        {/* Settings at bottom */}
+        <div className="sidebar-nav-bottom">
+          <div className="sidebar-link" style={{ cursor: 'default', opacity: 0.5 }}>
+            <Settings size={18} />
+            Settings
+          </div>
+        </div>
+      </aside>
+
+      {/* ── Bottom nav (mobile <768px) ───────────────────── */}
+      <nav className="bottom-nav">
+        {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
+          <NavLink
+            key={to}
+            to={to}
+            end={end}
+            className={({ isActive }) => `nav-item-link${isActive ? ' active' : ''}`}
+          >
+            <Icon size={21} />
+            <span>{label}</span>
+          </NavLink>
+        ))}
+      </nav>
+    </>
   );
 }

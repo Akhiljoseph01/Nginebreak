@@ -14,18 +14,23 @@ export default function App() {
   return (
     <GarageProvider>
       <BrowserRouter>
-        <div style={{ background: 'var(--bg-dark)', minHeight: '100vh' }}>
-          <Routes>
-            <Route path="/"                                element={<GarageDashboard />} />
-            <Route path="/vehicles"                        element={<Vehicles />} />
-            <Route path="/add-vehicle"                     element={<AddVehicle />} />
-            <Route path="/vehicle/:id"                     element={<VehicleProfile />} />
-            <Route path="/vehicle/:vehicleId/add-maintenance" element={<AddMaintenance />} />
-            <Route path="/history"                         element={<ServiceHistory />} />
-            <Route path="/profile"                         element={<Profile />} />
-            <Route path="*"                                element={<Navigate to="/" replace />} />
-          </Routes>
+        <div className="nav-layout">
+          {/* Sidebar (desktop) + Bottom nav (mobile) */}
           <BottomNav />
+
+          {/* Main content */}
+          <div className="main-content">
+            <Routes>
+              <Route path="/"                                element={<GarageDashboard />} />
+              <Route path="/vehicles"                        element={<Vehicles />} />
+              <Route path="/add-vehicle"                     element={<AddVehicle />} />
+              <Route path="/vehicle/:id"                     element={<VehicleProfile />} />
+              <Route path="/vehicle/:vehicleId/add-maintenance" element={<AddMaintenance />} />
+              <Route path="/history"                         element={<ServiceHistory />} />
+              <Route path="/profile"                         element={<Profile />} />
+              <Route path="*"                                element={<Navigate to="/" replace />} />
+            </Routes>
+          </div>
         </div>
       </BrowserRouter>
     </GarageProvider>

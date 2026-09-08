@@ -5,10 +5,16 @@ import StatusBadge from './StatusBadge';
 import { format } from 'date-fns';
 import { CheckCircle, ChevronDown, ChevronUp } from 'lucide-react';
 
-function getStatusColor(status) {
-  if (status === STATUS.OVERDUE) return 'var(--danger-color)';
+function getStatusBorderColor(status) {
+  if (status === STATUS.OVERDUE)  return 'var(--danger-color)';
   if (status === STATUS.DUE_SOON) return 'var(--warning-color)';
-  return 'var(--success-color)';
+  return 'var(--border-color)';
+}
+
+function getStatusIconBg(status) {
+  if (status === STATUS.OVERDUE)  return 'rgba(239,68,68,0.08)';
+  if (status === STATUS.DUE_SOON) return 'rgba(245,158,11,0.08)';
+  return 'rgba(16,185,129,0.08)';
 }
 
 function formatRemaining(mod) {
@@ -38,7 +44,8 @@ export default function MaintenanceCard({ mod, vehicleId, currentOdometer }) {
   const [completedDate, setCompletedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [saving, setSaving] = useState(false);
 
-  const borderColor = getStatusColor(mod.status);
+  const borderColor = getStatusBorderColor(mod.status);
+  const iconBg = getStatusIconBg(mod.status);
 
   const handleComplete = async (e) => {
     e.preventDefault();
@@ -49,58 +56,130 @@ export default function MaintenanceCard({ mod, vehicleId, currentOdometer }) {
   };
 
   return (
-    <div className="garage-card" style={{ borderLeft: `3px solid ${borderColor}`, padding: '1rem 1rem' }}>
-      <div className="d-flex justify-content-between align-items-start" onClick={() => setExpanded(e => !e)} style={{ cursor: 'pointer' }}>
-        <div>
-          <div className="d-flex align-items-center gap-2 mb-1">
-            <span style={{ fontWeight: 600, fontSize: '0.95rem' }}>{mod.name}</span>
-            <StatusBadge status={mod.status} />
+    <div
+      className="garage-card"
+      style={{ borderLeft: `3px solid ${borderColor}`, padding: '12px 14px', cursor: 'pointer' }}
+    >
+      {/* Main row */}
+      <div
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}
+        onClick={() => setExpanded(e => !e)}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1 }}>
+          {/* Icon box */}
+          <div style={{
+            width: 38, height: 38, borderRadius: 8, background: iconBg,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: '1rem', flexShrink: 0
+          }}>
+            🔧
           </div>
-          <small className="text-muted">{formatRemaining(mod)}</small>
-          {mod.next_due_km && (
-            <div><small className="text-muted">Due at {mod.next_due_km.toLocaleString()} km</small></div>
-          )}
+
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 2 }}>
+              <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>
+                {mod.name}
+              </span>
+              <StatusBadge status={mod.status} />
+            </div>
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+              {formatRemaining(mod)}
+            </div>
+            {mod.next_due_km && (
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                Due at {mod.next_due_km.toLocaleString()} km
+              </div>
+            )}
+          </div>
         </div>
-        <div className="d-flex gap-2 align-items-center">
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, marginLeft: 8 }}>
           <button
-            className="btn btn-sm"
-            style={{ background: 'rgba(16,185,129,0.15)', color: 'var(--success-color)', border: 'none', borderRadius: 8, padding: '0.25rem 0.6rem', fontSize: '0.75rem' }}
+            style={{
+              background: 'rgba(16,185,129,0.08)', color: 'var(--success-color)',
+              border: '1px solid rgba(16,185,129,0.25)', borderRadius: 8,
+              padding: '4px 10px', fontSize: '0.72rem', fontWeight: 600,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4
+            }}
             onClick={(e) => { e.stopPropagation(); setShowComplete(s => !s); }}
           >
-            <CheckCircle size={14} style={{ marginRight: 4 }} />Done
+            <CheckCircle size={13} /> Done
           </button>
-          {expanded ? <ChevronUp size={16} className="text-muted" /> : <ChevronDown size={16} className="text-muted" />}
+          {expanded
+            ? <ChevronUp size={15} style={{ color: 'var(--text-muted)' }} />
+            : <ChevronDown size={15} style={{ color: 'var(--text-muted)' }} />}
         </div>
       </div>
 
+      {/* Expanded details */}
       {expanded && (
-        <div className="mt-2 pt-2" style={{ borderTop: '1px solid rgba(255,255,255,0.05)', fontSize: '0.8rem' }}>
-          <div className="row g-2">
-            {mod.interval_km && <div className="col-6"><span className="text-muted">Interval:</span> <strong>{mod.interval_km.toLocaleString()} km</strong></div>}
-            {mod.interval_months && <div className="col-6"><span className="text-muted">Time:</span> <strong>Every {mod.interval_months}mo</strong></div>}
-            {mod.last_service_km && <div className="col-6"><span className="text-muted">Last at:</span> <strong>{mod.last_service_km.toLocaleString()} km</strong></div>}
-            {mod.last_service_date && <div className="col-6"><span className="text-muted">Last date:</span> <strong>{format(new Date(mod.last_service_date), 'dd MMM yy')}</strong></div>}
-          </div>
+        <div style={{
+          marginTop: 10, paddingTop: 10,
+          borderTop: '1px solid var(--border-color)',
+          fontSize: '0.8rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8
+        }}>
+          {mod.interval_km && (
+            <div>
+              <span style={{ color: 'var(--text-muted)' }}>Interval </span>
+              <strong style={{ color: 'var(--text-primary)' }}>{mod.interval_km.toLocaleString()} km</strong>
+            </div>
+          )}
+          {mod.interval_months && (
+            <div>
+              <span style={{ color: 'var(--text-muted)' }}>Time </span>
+              <strong style={{ color: 'var(--text-primary)' }}>Every {mod.interval_months}mo</strong>
+            </div>
+          )}
+          {mod.last_service_km && (
+            <div>
+              <span style={{ color: 'var(--text-muted)' }}>Last at </span>
+              <strong style={{ color: 'var(--text-primary)' }}>{mod.last_service_km.toLocaleString()} km</strong>
+            </div>
+          )}
+          {mod.last_service_date && (
+            <div>
+              <span style={{ color: 'var(--text-muted)' }}>Last date </span>
+              <strong style={{ color: 'var(--text-primary)' }}>{format(new Date(mod.last_service_date), 'dd MMM yy')}</strong>
+            </div>
+          )}
         </div>
       )}
 
+      {/* Complete service form */}
       {showComplete && (
-        <form onSubmit={handleComplete} className="mt-3 pt-2" style={{ borderTop: '1px solid rgba(255,255,255,0.07)' }}>
-          <div className="row g-2">
-            <div className="col-6">
-              <label className="form-label small text-muted mb-1">Odometer (km)</label>
-              <input type="number" className="form-control form-control-sm" value={completedOdo}
-                onChange={e => setCompletedOdo(e.target.value)} required />
+        <form
+          onSubmit={handleComplete}
+          style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border-color)' }}
+        >
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+            <div>
+              <label className="form-label" style={{ marginBottom: 4, display: 'block' }}>Odometer (km)</label>
+              <input
+                type="number"
+                className="form-control"
+                value={completedOdo}
+                onChange={e => setCompletedOdo(e.target.value)}
+                required
+              />
             </div>
-            <div className="col-6">
-              <label className="form-label small text-muted mb-1">Date</label>
-              <input type="date" className="form-control form-control-sm" value={completedDate}
-                onChange={e => setCompletedDate(e.target.value)} required />
+            <div>
+              <label className="form-label" style={{ marginBottom: 4, display: 'block' }}>Date</label>
+              <input
+                type="date"
+                className="form-control"
+                value={completedDate}
+                onChange={e => setCompletedDate(e.target.value)}
+                required
+              />
             </div>
           </div>
-          <button className="btn btn-sm w-100 mt-2" type="submit" disabled={saving}
-            style={{ background: 'var(--success-color)', color: '#fff', border: 'none', borderRadius: 8 }}>
-            {saving ? 'Saving…' : 'Confirm Service Done'}
+          <button
+            type="submit"
+            disabled={saving}
+            className="btn-orange"
+            style={{ width: '100%', justifyContent: 'center' }}
+          >
+            {saving ? 'Saving…' : '✓ Confirm Service Done'}
           </button>
         </form>
       )}

@@ -3,15 +3,15 @@ import { STATUS } from '../services/CalculationEngine';
 
 export default function StatusBadge({ status }) {
   const config = {
-    [STATUS.OVERDUE]:  { label: 'Overdue',  cls: 'danger',  dot: 'status-danger' },
-    [STATUS.DUE_SOON]: { label: 'Due Soon', cls: 'warning', dot: 'status-warning' },
-    [STATUS.UPCOMING]: { label: 'OK',       cls: 'success', dot: 'status-success' },
-    [STATUS.COMPLETED]:{ label: 'Done',     cls: 'info',    dot: 'status-info' },
+    [STATUS.OVERDUE]:   { label: 'Overdue',  cls: 'danger' },
+    [STATUS.DUE_SOON]:  { label: 'Due Soon', cls: 'warning' },
+    [STATUS.UPCOMING]:  { label: 'OK',        cls: 'success' },
+    [STATUS.COMPLETED]: { label: 'Done',      cls: 'info' },
   };
   const c = config[status] || config[STATUS.UPCOMING];
   return (
-    <span className={`badge bg-${c.cls} bg-opacity-20 text-${c.cls}`} style={{fontSize:'0.7rem',padding:'0.3em 0.6em',borderRadius:'20px'}}>
-      <span className={`status-dot ${c.dot}`} style={{width:7,height:7}}></span>
+    <span className={`badge-pill badge-${c.cls}`}>
+      <span className={`status-dot status-${c.cls}`} />
       {c.label}
     </span>
   );

@@ -2,7 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { useGarage } from '../context/GarageContext';
 import { STATUS } from '../services/CalculationEngine';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, Plus } from 'lucide-react';
 
 function getVehicleIcon(type) {
   const map = { Motorcycle: '🏍️', Scooter: '🛵', EV: '⚡', Bus: '🚌', Truck: '🚛', Van: '🚐', SUV: '🚙' };
@@ -13,49 +13,72 @@ export default function Vehicles() {
   const { vehicles } = useGarage();
 
   return (
-    <div className="app-container px-3 pt-4">
-      <h5 style={{ fontWeight: 700, marginBottom: '1.25rem' }}>All Vehicles</h5>
+    <div className="app-container" style={{ paddingTop: 0 }}>
+      {/* Page header */}
+      <div className="page-header">
+        <div className="breadcrumb-nav">
+          <Link to="/">Home</Link>
+          <span className="sep">›</span>
+          <span className="current">Vehicles</span>
+        </div>
+        <h1 className="page-title">All Vehicles</h1>
+      </div>
+
       {vehicles.length === 0 ? (
-        <div className="garage-card text-center py-4">
-          <p className="text-muted mb-3">No vehicles yet.</p>
-          <Link to="/add-vehicle" className="btn btn-primary" style={{ borderRadius: 10 }}>Add Vehicle</Link>
+        <div className="empty-state">
+          <div className="empty-icon">🚗</div>
+          <h5>No vehicles yet</h5>
+          <p>Add your first vehicle to get started.</p>
+          <Link to="/add-vehicle" className="btn-orange">
+            <Plus size={16} /> Add Vehicle
+          </Link>
         </div>
       ) : (
-        vehicles.map(v => {
-          const mods = v.maintenance_modules || [];
-          const overdue = mods.filter(m => m.status === STATUS.OVERDUE).length;
-          const dueSoon = mods.filter(m => m.status === STATUS.DUE_SOON).length;
-          return (
-            <Link key={v.id} to={`/vehicle/${v.id}`} style={{ textDecoration: 'none' }}>
-              <div className="garage-card">
-                <div className="d-flex justify-content-between align-items-center">
-                  <div className="d-flex align-items-center gap-3">
-                    <span style={{ fontSize: '2.2rem' }}>{getVehicleIcon(v.type)}</span>
-                    <div>
-                      <div style={{ fontWeight: 700 }}>{v.make} {v.model}</div>
-                      <small className="text-muted">{v.year} · {v.type}</small>
-                      <div><small className="text-muted">{v.current_odometer.toLocaleString()} km</small></div>
-                    </div>
+        <>
+          {vehicles.map(v => {
+            const mods = v.maintenance_modules || [];
+            const overdue = mods.filter(m => m.status === STATUS.OVERDUE).length;
+            const dueSoon = mods.filter(m => m.status === STATUS.DUE_SOON).length;
+
+            return (
+              <Link key={v.id} to={`/vehicle/${v.id}`} className="vehicle-card-h">
+                <div className="vehicle-icon-box">
+                  {getVehicleIcon(v.type)}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)', marginBottom: 2 }}>
+                    {v.make} {v.model}
                   </div>
-                  <div className="d-flex align-items-center gap-2">
-                    {overdue > 0 && <span style={{ color: 'var(--danger-color)', fontSize: '0.75rem' }}>🔴 {overdue}</span>}
-                    {dueSoon > 0 && <span style={{ color: 'var(--warning-color)', fontSize: '0.75rem' }}>🟡 {dueSoon}</span>}
-                    <ChevronRight size={16} className="text-muted" />
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: 4 }}>
+                    {v.year} · {v.type} · {v.current_odometer.toLocaleString()} km
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    {overdue > 0 && <span className="badge-pill badge-danger">{overdue} overdue</span>}
+                    {dueSoon > 0 && <span className="badge-pill badge-warning">{dueSoon} due soon</span>}
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                      {mods.length} scheduled · {(v.service_history || []).length} records
+                    </span>
                   </div>
                 </div>
-                <div className="d-flex gap-3 mt-2" style={{ fontSize: '0.75rem' }}>
-                  <span className="text-muted">{mods.length} scheduled items</span>
-                  <span className="text-muted">· {(v.service_history || []).length} service records</span>
-                </div>
-              </div>
-            </Link>
-          );
-        })
+                <ChevronRight size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+              </Link>
+            );
+          })}
+
+          <Link
+            to="/add-vehicle"
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              padding: '11px', borderRadius: 12, marginTop: 4,
+              border: '1.5px dashed var(--accent-border)',
+              color: 'var(--accent-color)', fontSize: '0.875rem', fontWeight: 600,
+              background: 'var(--accent-light)'
+            }}
+          >
+            <Plus size={16} /> Add Vehicle
+          </Link>
+        </>
       )}
-      <Link to="/add-vehicle" className="btn w-100"
-        style={{ background: 'rgba(59,130,246,0.1)', color: 'var(--accent-color)', border: '1px dashed rgba(59,130,246,0.3)', borderRadius: 12, fontWeight: 600, marginTop: 4 }}>
-        + Add Vehicle
-      </Link>
     </div>
   );
 }

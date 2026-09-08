@@ -1,15 +1,19 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useGarage } from '../context/GarageContext';
 import { format } from 'date-fns';
-import { Clock } from 'lucide-react';
+import { Clock, Link as LinkIcon } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 function getVehicleIcon(type) {
   const map = { Motorcycle: '🏍️', Scooter: '🛵', EV: '⚡', Bus: '🚌', Truck: '🚛', Van: '🚐', SUV: '🚙' };
   return map[type] || '🚗';
 }
 
+const FILTER_TABS = ['All', 'Engine', 'Fluids', 'Filters', 'Brakes', 'Tyres', 'Electrical', 'Exterior', 'General', 'Custom'];
+
 export default function ServiceHistory() {
   const { vehicles } = useGarage();
+  const [activeFilter, setActiveFilter] = useState('All');
 
   // Flatten all history across all vehicles with vehicle info attached
   const allHistory = vehicles.flatMap(v =>
@@ -22,51 +26,64 @@ export default function ServiceHistory() {
   ).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
   return (
-    <div className="app-container px-3 pt-4">
-      <div className="d-flex align-items-center gap-2 mb-4">
-        <Clock size={22} style={{ color: 'var(--accent-color)' }} />
-        <h5 className="mb-0" style={{ fontWeight: 700 }}>Service History</h5>
+    <div className="app-container" style={{ paddingTop: 0 }}>
+      {/* Page header */}
+      <div className="page-header">
+        <div className="breadcrumb-nav">
+          <Link to="/">Home</Link>
+          <span className="sep">›</span>
+          <span className="current">Maintenance</span>
+        </div>
+        <h1 className="page-title">Maintenance</h1>
+      </div>
+
+      {/* Filter tabs */}
+      <div style={{ display: 'flex', gap: 8, overflowX: 'auto', marginBottom: 20, scrollbarWidth: 'none', paddingBottom: 2 }}>
+        {FILTER_TABS.map(tab => (
+          <button
+            key={tab}
+            className={`chip${activeFilter === tab ? ' active' : ''}`}
+            onClick={() => setActiveFilter(tab)}
+          >
+            {tab}
+          </button>
+        ))}
       </div>
 
       {allHistory.length === 0 ? (
-        <div style={{ textAlign: 'center', paddingTop: '3rem' }}>
-          <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📋</div>
-          <p className="text-muted">No service records yet.</p>
-          <small className="text-muted">Mark a maintenance item as done to start your history.</small>
+        <div className="empty-state">
+          <div className="empty-icon">📋</div>
+          <h5>No service records yet</h5>
+          <p>Mark a maintenance item as done to start your history.</p>
         </div>
       ) : (
         <div style={{ position: 'relative' }}>
           {/* Timeline line */}
-          <div style={{
-            position: 'absolute', left: 19, top: 0, bottom: 0,
-            width: 2, background: 'rgba(255,255,255,0.07)', zIndex: 0
-          }} />
+          <div className="timeline-line" />
 
-          {allHistory.map((h, i) => (
-            <div key={h.id} className="d-flex gap-3 mb-3" style={{ position: 'relative', zIndex: 1 }}>
-              {/* Circle */}
-              <div style={{
-                width: 38, height: 38, borderRadius: '50%', flexShrink: 0,
-                background: 'rgba(16,185,129,0.15)', border: '2px solid var(--success-color)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '1rem'
-              }}>
-                ✓
-              </div>
+          {allHistory.map((h) => (
+            <div key={h.id} style={{ display: 'flex', gap: 14, marginBottom: 10, position: 'relative', zIndex: 1 }}>
+              {/* Timeline dot */}
+              <div className="timeline-dot">✓</div>
 
-              <div className="garage-card flex-grow-1" style={{ padding: '0.75rem 1rem', marginBottom: 0 }}>
-                <div className="d-flex justify-content-between align-items-start">
+              {/* Card */}
+              <div className="garage-card" style={{ flex: 1, marginBottom: 0, padding: '12px 14px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div>
-                    <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{h.module_name}</div>
-                    <small className="text-muted">{h.vehicleIcon} {h.vehicleName}</small>
+                    <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-primary)' }}>
+                      {h.module_name}
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 2 }}>
+                      {h.vehicleIcon} {h.vehicleName}
+                    </div>
                   </div>
-                  <div className="text-end">
-                    <div style={{ fontWeight: 600, color: 'var(--accent-color)', fontSize: '0.85rem' }}>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontWeight: 700, color: 'var(--accent-color)', fontSize: '0.85rem' }}>
                       {h.odometer.toLocaleString()} km
                     </div>
-                    <small className="text-muted">
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                       {h.date ? format(new Date(h.date), 'dd MMM yyyy') : '—'}
-                    </small>
+                    </div>
                   </div>
                 </div>
               </div>

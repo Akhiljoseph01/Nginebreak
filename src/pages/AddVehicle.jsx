@@ -41,34 +41,41 @@ export default function AddVehicle() {
   };
 
   return (
-    <div className="app-container px-3 pt-4">
+    <div className="app-container" style={{ paddingTop: 0 }}>
       {/* Header */}
-      <div className="d-flex align-items-center mb-4">
-        <button className="btn btn-link p-0 me-3" onClick={() => navigate(-1)} style={{ color: 'var(--text-secondary)' }}>
-          <ChevronLeft size={24} />
-        </button>
-        <h5 className="mb-0" style={{ fontWeight: 700 }}>Add Vehicle</h5>
+      <div className="page-header">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button
+            onClick={() => navigate(-1)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: 0 }}
+          >
+            <ChevronLeft size={22} />
+          </button>
+          <h1 className="page-title" style={{ fontSize: '1.3rem' }}>Add Vehicle</h1>
+        </div>
       </div>
 
       {step === 1 && (
         <div>
-          <p className="text-muted small mb-3">What type of vehicle?</p>
-          <div className="row g-2 mb-4">
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: 16 }}>
+            What type of vehicle?
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 24 }}>
             {VEHICLE_TYPES.map(({ label, icon: Icon }) => (
-              <div key={label} className="col-4">
-                <button
-                  onClick={() => { set('type', label); setStep(2); }}
-                  className="w-100 garage-card d-flex flex-column align-items-center py-3 gap-2"
-                  style={{
-                    border: form.type === label ? '1px solid var(--accent-color)' : '1px solid rgba(255,255,255,0.07)',
-                    cursor: 'pointer', background: 'var(--bg-card)', borderRadius: 16,
-                    color: 'var(--text-primary)', marginBottom: 0
-                  }}
-                >
-                  <Icon size={26} color="var(--accent-color)" />
-                  <small style={{ fontSize: '0.75rem' }}>{label}</small>
-                </button>
-              </div>
+              <button
+                key={label}
+                onClick={() => { set('type', label); setStep(2); }}
+                style={{
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+                  padding: '16px 8px', borderRadius: 12, cursor: 'pointer',
+                  background: form.type === label ? 'var(--accent-light)' : 'var(--bg-card)',
+                  border: form.type === label ? '1.5px solid var(--accent-color)' : '1px solid var(--border-color)',
+                  color: 'var(--text-primary)', transition: 'all 0.15s ease'
+                }}
+              >
+                <Icon size={24} color={form.type === label ? 'var(--accent-color)' : 'var(--text-secondary)'} />
+                <span style={{ fontSize: '0.78rem', fontWeight: 500 }}>{label}</span>
+              </button>
             ))}
           </div>
         </div>
@@ -76,13 +83,15 @@ export default function AddVehicle() {
 
       {step === 2 && (
         <div>
-          <p className="text-muted small mb-3">
-            <span style={{ color: 'var(--accent-color)', fontWeight: 600 }}>{form.type}</span> — basic info (that's it!)
+          <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: 16 }}>
+            <span style={{ color: 'var(--accent-color)', fontWeight: 700 }}>{form.type}</span> — basic info
           </p>
 
-          <div className="garage-card">
-            <div className="mb-3">
-              <label className="form-label small text-muted">Make <span className="text-danger">*</span></label>
+          <div className="garage-card" style={{ padding: '20px' }}>
+            <div style={{ marginBottom: 16 }}>
+              <label className="form-label" style={{ marginBottom: 6, display: 'block' }}>
+                Make <span style={{ color: 'var(--danger-color)' }}>*</span>
+              </label>
               <input
                 className="form-control"
                 placeholder="e.g. Honda"
@@ -91,8 +100,10 @@ export default function AddVehicle() {
                 autoFocus
               />
             </div>
-            <div className="mb-3">
-              <label className="form-label small text-muted">Model <span className="text-danger">*</span></label>
+            <div style={{ marginBottom: 16 }}>
+              <label className="form-label" style={{ marginBottom: 6, display: 'block' }}>
+                Model <span style={{ color: 'var(--danger-color)' }}>*</span>
+              </label>
               <input
                 className="form-control"
                 placeholder="e.g. City"
@@ -100,9 +111,9 @@ export default function AddVehicle() {
                 onChange={e => set('model', e.target.value)}
               />
             </div>
-            <div className="row g-2 mb-3">
-              <div className="col-6">
-                <label className="form-label small text-muted">Year</label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+              <div>
+                <label className="form-label" style={{ marginBottom: 6, display: 'block' }}>Year</label>
                 <input
                   type="number"
                   className="form-control"
@@ -111,8 +122,10 @@ export default function AddVehicle() {
                   min={1980} max={new Date().getFullYear() + 1}
                 />
               </div>
-              <div className="col-6">
-                <label className="form-label small text-muted">Odometer (km) <span className="text-danger">*</span></label>
+              <div>
+                <label className="form-label" style={{ marginBottom: 6, display: 'block' }}>
+                  Odometer (km) <span style={{ color: 'var(--danger-color)' }}>*</span>
+                </label>
                 <input
                   type="number"
                   className="form-control"
@@ -122,10 +135,12 @@ export default function AddVehicle() {
                 />
               </div>
             </div>
-            <small className="text-muted d-block mb-3">You can add registration, VIN, and photos later in the vehicle profile.</small>
+            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 16 }}>
+              You can add registration, VIN, and photos later in the vehicle profile.
+            </p>
             <button
-              className="btn btn-primary w-100"
-              style={{ borderRadius: 12, fontWeight: 600, padding: '0.75rem' }}
+              className="btn-orange"
+              style={{ width: '100%', justifyContent: 'center', padding: '12px' }}
               onClick={handleSubmit}
               disabled={saving || !form.make || !form.model || !form.odometer}
             >
