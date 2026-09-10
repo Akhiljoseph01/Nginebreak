@@ -15,7 +15,83 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 3. Vehicles Table
+-- Ensure email column exists on profiles if table was created previously
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS display_name TEXT DEFAULT 'Member';
+
+-- 3. Automatic Profile Sync Trigger from auth.users
+-- Whenever any user signs up or updates in Supabase Auth, they are automatically in public.profiles
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.profiles (id, display_name, email)
+  VALUES (
+    NEW.id,
+    COALESCE(NEW.raw_user_meta_data->>'display_name', split_part(NEW.email, '@', 1), 'Member'),
+    LOWER(TRIM(NEW.email))
+  )
+  ON CONFLICT (id) DO UPDATE
+  SET 
+    email = EXCLUDED.email,
+    display_name = COALESCE(EXCLUDED.display_name, profiles.display_name);
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT OR UPDATE ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- 4. Backfill all existing registered users (e.g. test1@gmail.com) into public.profiles
+INSERT INTO public.profiles (id, display_name, email)
+SELECT 
+  id, 
+  COALESCE(raw_user_meta_data->>'display_name', split_part(email, '@', 1), 'Member'),
+  LOWER(TRIM(email))
+FROM auth.users
+ON CONFLICT (id) DO UPDATE 
+SET 
+  email = EXCLUDED.email,
+  display_name = COALESCE(EXCLUDED.display_name, profiles.display_name);
+
+-- 5. RPC Lookup Helper (allows finding users by email safely even if profile sync was delayed)
+CREATE OR REPLACE FUNCTION public.lookup_user_by_email(lookup_email TEXT)
+RETURNS TABLE (id UUID, display_name TEXT, email TEXT) 
+SECURITY DEFINER
+SET search_path = public, auth
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  -- 1. Try finding in profiles
+  RETURN QUERY
+  SELECT p.id, p.display_name, p.email
+  FROM public.profiles p
+  WHERE lower(trim(p.email)) = lower(trim(lookup_email))
+  LIMIT 1;
+
+  -- 2. If not found in profiles, check auth.users directly and self-heal
+  IF NOT FOUND THEN
+    INSERT INTO public.profiles (id, display_name, email)
+    SELECT 
+      u.id, 
+      COALESCE(u.raw_user_meta_data->>'display_name', split_part(u.email, '@', 1), 'Member'),
+      lower(trim(u.email))
+    FROM auth.users u
+    WHERE lower(trim(u.email)) = lower(trim(lookup_email))
+    ON CONFLICT (id) DO UPDATE 
+    SET email = EXCLUDED.email;
+
+    RETURN QUERY
+    SELECT p.id, p.display_name, p.email
+    FROM public.profiles p
+    WHERE lower(trim(p.email)) = lower(trim(lookup_email))
+    LIMIT 1;
+  END IF;
+END;
+$$;
+
+-- 6. Vehicles Table
 CREATE TABLE IF NOT EXISTS public.vehicles (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
@@ -29,7 +105,7 @@ CREATE TABLE IF NOT EXISTS public.vehicles (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 4. Garage Members Table (multi-user shared access to vehicles)
+-- 7. Garage Members Table (multi-user shared access to vehicles)
 CREATE TABLE IF NOT EXISTS public.garage_members (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   vehicle_id UUID NOT NULL REFERENCES public.vehicles(id) ON DELETE CASCADE,
@@ -39,7 +115,7 @@ CREATE TABLE IF NOT EXISTS public.garage_members (
   UNIQUE(vehicle_id, user_id)
 );
 
--- 5. Maintenance Modules Table (rules/schedules per vehicle)
+-- 8. Maintenance Modules Table (rules/schedules per vehicle)
 CREATE TABLE IF NOT EXISTS public.maintenance_modules (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   vehicle_id UUID NOT NULL REFERENCES public.vehicles(id) ON DELETE CASCADE,
@@ -51,7 +127,7 @@ CREATE TABLE IF NOT EXISTS public.maintenance_modules (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 6. Service History Table (completed logs)
+-- 9. Service History Table (completed logs)
 CREATE TABLE IF NOT EXISTS public.service_history (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   vehicle_id UUID NOT NULL REFERENCES public.vehicles(id) ON DELETE CASCADE,
@@ -63,7 +139,7 @@ CREATE TABLE IF NOT EXISTS public.service_history (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 7. Odometer History Table (tamper-evident audit log)
+-- 10. Odometer History Table (tamper-evident audit log)
 CREATE TABLE IF NOT EXISTS public.odometer_history (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   vehicle_id UUID NOT NULL REFERENCES public.vehicles(id) ON DELETE CASCADE,
@@ -76,7 +152,7 @@ CREATE TABLE IF NOT EXISTS public.odometer_history (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 8. Enable Row Level Security (RLS) on all tables
+-- 11. Enable Row Level Security (RLS) on all tables
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.vehicles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.garage_members ENABLE ROW LEVEL SECURITY;
@@ -84,7 +160,7 @@ ALTER TABLE public.maintenance_modules ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.service_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.odometer_history ENABLE ROW LEVEL SECURITY;
 
--- 9. Dev Policies (Permissive policies for development & immediate testing)
+-- 12. Dev Policies (Permissive policies for development & immediate testing)
 DROP POLICY IF EXISTS "profiles_dev_all" ON public.profiles;
 CREATE POLICY "profiles_dev_all" ON public.profiles FOR ALL USING (true) WITH CHECK (true);
 
@@ -103,7 +179,7 @@ CREATE POLICY "service_history_dev_all" ON public.service_history FOR ALL USING 
 DROP POLICY IF EXISTS "odometer_history_dev_all" ON public.odometer_history;
 CREATE POLICY "odometer_history_dev_all" ON public.odometer_history FOR ALL USING (true) WITH CHECK (true);
 
--- 10. Performance Indexes
+-- 13. Performance Indexes
 CREATE INDEX IF NOT EXISTS idx_vehicles_user ON public.vehicles(user_id);
 CREATE INDEX IF NOT EXISTS idx_garage_members_vehicle ON public.garage_members(vehicle_id);
 CREATE INDEX IF NOT EXISTS idx_garage_members_user ON public.garage_members(user_id);
@@ -113,7 +189,7 @@ CREATE INDEX IF NOT EXISTS idx_odometer_history_vehicle ON public.odometer_histo
 CREATE INDEX IF NOT EXISTS idx_odometer_history_created ON public.odometer_history(vehicle_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_profiles_email ON public.profiles(email);
 
--- 11. Storage Bucket for Vehicle Photos & Receipts
+-- 14. Storage Bucket for Vehicle Photos & Receipts
 INSERT INTO storage.buckets (id, name, public)
 VALUES ('vehicle-media', 'vehicle-media', true)
 ON CONFLICT (id) DO UPDATE SET public = true;

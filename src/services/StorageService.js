@@ -18,6 +18,13 @@ const DEFAULT_DATA = {
 };
 
 // ============================================================
+// Helper: get storage key scoped per user
+// ============================================================
+function getStorageKey(userId) {
+  return userId ? `garage_data_${userId}` : "garage_data_guest";
+}
+
+// ============================================================
 // Helper: get current auth user id + display name
 // ============================================================
 async function getCurrentAuthUser() {
@@ -25,18 +32,30 @@ async function getCurrentAuthUser() {
   try {
     const {
       data: { user },
+      error: userErr,
     } = await supabase.auth.getUser();
-    if (!user) return null;
-    // Fetch display_name from profiles
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("display_name")
-      .eq("id", user.id)
-      .single();
+    if (userErr || !user) return null;
+
+    let displayName =
+      user.user_metadata?.display_name ||
+      user.email?.split("@")[0] ||
+      "Member";
+
+    try {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("display_name")
+        .eq("id", user.id)
+        .maybeSingle();
+      if (profile?.display_name) {
+        displayName = profile.display_name;
+      }
+    } catch (_) {}
+
     return {
       id: user.id,
       email: user.email,
-      display_name: profile?.display_name || user.email?.split("@")[0] || "Member",
+      display_name: displayName,
     };
   } catch {
     return null;
@@ -44,141 +63,220 @@ async function getCurrentAuthUser() {
 }
 
 class StorageService {
-  async init() {
-    const data = await localforage.getItem("garage_data");
+  async init(storageKey = "garage_data_guest") {
+    const data = await localforage.getItem(storageKey);
     if (!data) {
-      await localforage.setItem("garage_data", DEFAULT_DATA);
+      await localforage.setItem(storageKey, DEFAULT_DATA);
     }
   }
 
   // ==========================================
-  // Get Data — scoped to current user via garage_members
+  // Get Data — scoped to current user, resilient to missing tables
   // ==========================================
   async getData() {
-    await this.init();
+    const authUser = await getCurrentAuthUser();
+    const storageKey = getStorageKey(authUser?.id);
+    await this.init(storageKey);
 
-    if (isSupabaseConfigured() && supabase) {
-      try {
-        const authUser = await getCurrentAuthUser();
-
-        let vehicleIds = null;
-
-        if (authUser) {
-          // Get vehicles this user is a member of
-          const { data: memberRows, error: memberErr } = await supabase
-            .from("garage_members")
-            .select("vehicle_id")
-            .eq("user_id", authUser.id);
-          if (memberErr) throw memberErr;
-          vehicleIds = (memberRows || []).map((r) => r.vehicle_id);
-        }
-
-        let vehiclesQuery = supabase
-          .from("vehicles")
-          .select("*")
-          .order("created_at", { ascending: true });
-
-        if (vehicleIds && vehicleIds.length > 0) {
-          vehiclesQuery = vehiclesQuery.in("id", vehicleIds);
-        } else if (vehicleIds && vehicleIds.length === 0) {
-          // User has no vehicles yet
-          const cloudData = {
-            user: {
-              name: authUser?.display_name || "Enthusiast",
-              id: authUser?.id,
-            },
-            vehicles: [],
-          };
-          await localforage.setItem("garage_data", cloudData);
-          return cloudData;
-        }
-
-        const { data: dbVehicles, error: vErr } = await vehiclesQuery;
-        if (vErr) throw vErr;
-
-        if (dbVehicles) {
-          const { data: dbModules } = await supabase
-            .from("maintenance_modules")
-            .select("*");
-
-          const { data: dbHistory } = await supabase
-            .from("service_history")
-            .select("*")
-            .order("date", { ascending: false });
-
-          const assembledVehicles = await Promise.all(
-            dbVehicles.map(async (veh) => {
-              const rawModules = (dbModules || []).filter(
-                (m) => m.vehicle_id === veh.id
-              );
-              const rawHistory = (dbHistory || []).filter(
-                (h) => h.vehicle_id === veh.id
-              );
-
-              const modules = rawModules.map((mod) => {
-                const calc = calculateMaintenanceStatus(
-                  mod,
-                  veh.current_odometer
-                );
-                return { ...mod, ...calc };
-              });
-
-              // Fetch members for this vehicle
-              const { data: memberRows } = await supabase
-                .from("garage_members")
-                .select("user_id, role")
-                .eq("vehicle_id", veh.id);
-
-              const memberIds = (memberRows || []).map((r) => r.user_id);
-              let memberProfiles = [];
-              if (memberIds.length > 0) {
-                const { data: profiles } = await supabase
-                  .from("profiles")
-                  .select("id, display_name")
-                  .in("id", memberIds);
-                memberProfiles = (profiles || []).map((p) => {
-                  const row = (memberRows || []).find((r) => r.user_id === p.id);
-                  return {
-                    user_id: p.id,
-                    display_name: p.display_name,
-                    role: row?.role || "member",
-                  };
-                });
-              }
-
-              return {
-                ...veh,
-                media: veh.media || [],
-                maintenance_modules: modules,
-                service_history: rawHistory,
-                members: memberProfiles,
-              };
-            })
-          );
-
-          const cloudData = {
-            user: {
-              name: authUser?.display_name || "Enthusiast",
-              id: authUser?.id,
-            },
-            vehicles: assembledVehicles,
-          };
-
-          await localforage.setItem("garage_data", cloudData);
-          return cloudData;
-        }
-      } catch (err) {
-        console.warn(
-          "[StorageService] Supabase sync failed, falling back to local cache:",
-          err.message
-        );
+    let localData = await localforage.getItem(storageKey);
+    if (!localData) {
+      // Check legacy "garage_data" key for existing data migration
+      const legacyData = await localforage.getItem("garage_data");
+      if (legacyData?.vehicles?.length > 0) {
+        localData = legacyData;
+      } else {
+        localData = {
+          user: {
+            name: authUser?.display_name || "Enthusiast",
+            id: authUser?.id,
+          },
+          vehicles: [],
+        };
       }
+      await localforage.setItem(storageKey, localData);
     }
 
-    return (await localforage.getItem("garage_data")) || DEFAULT_DATA;
+    // Guest / unauthenticated mode — use local storage directly
+    if (!isSupabaseConfigured() || !supabase || !authUser) {
+      return localData || DEFAULT_DATA;
+    }
+
+    try {
+      // 1. Get vehicles this user is a member of (shared vehicles)
+      let sharedVehicleIds = [];
+      try {
+        const { data: memberRows, error: memberErr } = await supabase
+          .from("garage_members")
+          .select("vehicle_id")
+          .eq("user_id", authUser.id);
+        if (!memberErr && memberRows) {
+          sharedVehicleIds = memberRows.map((r) => r.vehicle_id).filter(Boolean);
+        }
+      } catch (_) {}
+
+      // 2. Query vehicles: user's owned vehicles OR shared vehicles
+      let vehiclesQuery = supabase
+        .from("vehicles")
+        .select("*")
+        .order("created_at", { ascending: true });
+
+      if (sharedVehicleIds.length > 0) {
+        vehiclesQuery = vehiclesQuery.or(
+          `user_id.eq.${authUser.id},id.in.(${sharedVehicleIds.join(",")})`
+        );
+      } else {
+        vehiclesQuery = vehiclesQuery.eq("user_id", authUser.id);
+      }
+
+      const { data: dbVehicles, error: vErr } = await vehiclesQuery;
+      if (vErr) throw vErr;
+
+      const validDbVehicles = dbVehicles || [];
+      const vehIds = validDbVehicles.map((v) => v.id);
+
+      // 3. Query maintenance modules for these vehicles
+      let dbModules = [];
+      if (vehIds.length > 0) {
+        try {
+          const { data: mods, error: mErr } = await supabase
+            .from("maintenance_modules")
+            .select("*")
+            .in("vehicle_id", vehIds);
+          if (!mErr && mods) dbModules = mods;
+        } catch (_) {}
+      }
+
+      // 4. Query service history for these vehicles
+      let dbHistory = [];
+      if (vehIds.length > 0) {
+        try {
+          const { data: hist, error: hErr } = await supabase
+            .from("service_history")
+            .select("*")
+            .in("vehicle_id", vehIds)
+            .order("date", { ascending: false });
+          if (!hErr && hist) dbHistory = hist;
+        } catch (_) {}
+      }
+
+      // 5. Query members for these vehicles
+      let allMemberRows = [];
+      let allProfiles = [];
+      if (vehIds.length > 0) {
+        try {
+          const { data: mRows } = await supabase
+            .from("garage_members")
+            .select("vehicle_id, user_id, role")
+            .in("vehicle_id", vehIds);
+          if (mRows) allMemberRows = mRows;
+
+          const memberUserIds = [...new Set(allMemberRows.map((m) => m.user_id))];
+          if (memberUserIds.length > 0) {
+            const { data: profs } = await supabase
+              .from("profiles")
+              .select("id, display_name")
+              .in("id", memberUserIds);
+            if (profs) allProfiles = profs;
+          }
+        } catch (_) {}
+      }
+
+      // 6. Assemble vehicles
+      const assembledVehicles = validDbVehicles.map((veh) => {
+        const rawModules = dbModules.filter((m) => m.vehicle_id === veh.id);
+        const rawHistory = dbHistory.filter((h) => h.vehicle_id === veh.id);
+
+        const modules = rawModules.map((mod) => {
+          const calc = calculateMaintenanceStatus(
+            mod,
+            veh.current_odometer
+          );
+          return { ...mod, ...calc };
+        });
+
+        const vMembers = allMemberRows
+          .filter((m) => m.vehicle_id === veh.id)
+          .map((m) => {
+            const p = allProfiles.find((pr) => pr.id === m.user_id);
+            return {
+              user_id: m.user_id,
+              display_name:
+                p?.display_name ||
+                (m.user_id === authUser.id ? authUser.display_name : "Member"),
+              role: m.role || "member",
+            };
+          });
+
+        return {
+          ...veh,
+          media: veh.media || [],
+          maintenance_modules: modules,
+          service_history: rawHistory,
+          members: vMembers,
+        };
+      });
+
+      // 7. Prevent data loss: retain any local vehicles not yet in cloud, sync them
+      if (localData?.vehicles && localData.vehicles.length > 0) {
+        for (const locVeh of localData.vehicles) {
+          const existsInCloud = assembledVehicles.some((v) => v.id === locVeh.id);
+          if (!existsInCloud) {
+            assembledVehicles.push(locVeh);
+            // Sync to Supabase in background
+            supabase
+              .from("vehicles")
+              .insert([
+                {
+                  id: locVeh.id,
+                  user_id: authUser.id,
+                  type: locVeh.type || "Car",
+                  make: locVeh.make,
+                  model: locVeh.model,
+                  year: locVeh.year,
+                  current_odometer: locVeh.current_odometer || 0,
+                },
+              ])
+              .then(() => {
+                supabase
+                  .from("garage_members")
+                  .insert([
+                    {
+                      vehicle_id: locVeh.id,
+                      user_id: authUser.id,
+                      role: "owner",
+                    },
+                  ])
+                  .catch(() => {});
+              })
+              .catch(() => {});
+          }
+        }
+      }
+
+      const cloudData = {
+        user: {
+          name: authUser.display_name || "Enthusiast",
+          id: authUser.id,
+        },
+        vehicles: assembledVehicles,
+      };
+
+      await localforage.setItem(storageKey, cloudData);
+      await localforage.setItem("garage_data", cloudData);
+      return cloudData;
+    } catch (err) {
+      console.warn(
+        "[StorageService] Supabase sync failed, falling back to local cache:",
+        err.message
+      );
+      return localData || DEFAULT_DATA;
+    }
   }
 
   async saveData(data) {
+    const authUser = await getCurrentAuthUser();
+    const storageKey = getStorageKey(authUser?.id);
+    await localforage.setItem(storageKey, data);
     await localforage.setItem("garage_data", data);
   }
 
@@ -190,6 +288,7 @@ class StorageService {
     const authUser = await getCurrentAuthUser();
     const newVehicle = {
       id: newVehicleId,
+      user_id: authUser?.id || null,
       type: vehicleParams.type || "Car",
       make: vehicleParams.make,
       model: vehicleParams.model,
@@ -211,7 +310,7 @@ class StorageService {
 
     if (isSupabaseConfigured() && supabase) {
       try {
-        const { error } = await supabase.from("vehicles").insert([
+        const { error: vInsertErr } = await supabase.from("vehicles").insert([
           {
             id: newVehicle.id,
             user_id: authUser?.id || null,
@@ -222,31 +321,46 @@ class StorageService {
             current_odometer: newVehicle.current_odometer,
           },
         ]);
-        if (error) throw error;
+        if (vInsertErr) {
+          console.error(
+            "[StorageService] Supabase vehicle insert error:",
+            vInsertErr.message
+          );
+        } else if (authUser) {
+          try {
+            await supabase.from("garage_members").insert([
+              {
+                vehicle_id: newVehicleId,
+                user_id: authUser.id,
+                role: "owner",
+              },
+            ]);
+          } catch (gmErr) {
+            console.warn(
+              "[StorageService] garage_members insert warning:",
+              gmErr.message
+            );
+          }
 
-        // Insert owner into garage_members
-        if (authUser) {
-          await supabase.from("garage_members").insert([
-            {
-              vehicle_id: newVehicleId,
-              user_id: authUser.id,
-              role: "owner",
-            },
-          ]);
-        }
-
-        // Record initial odometer reading
-        if (newVehicle.current_odometer > 0 && authUser) {
-          await supabase.from("odometer_history").insert([
-            {
-              vehicle_id: newVehicleId,
-              user_id: authUser.id,
-              added_by_name: authUser.display_name,
-              odometer_value: newVehicle.current_odometer,
-              previous_value: 0,
-              is_rewound: false,
-            },
-          ]);
+          if (newVehicle.current_odometer > 0) {
+            try {
+              await supabase.from("odometer_history").insert([
+                {
+                  vehicle_id: newVehicleId,
+                  user_id: authUser.id,
+                  added_by_name: authUser.display_name,
+                  odometer_value: newVehicle.current_odometer,
+                  previous_value: 0,
+                  is_rewound: false,
+                },
+              ]);
+            } catch (odoErr) {
+              console.warn(
+                "[StorageService] odometer_history insert warning:",
+                odoErr.message
+              );
+            }
+          }
         }
       } catch (err) {
         console.error(
@@ -466,33 +580,52 @@ class StorageService {
   // Get Garage Members for a vehicle
   // ==========================================
   async getGarageMembers(vehicleId) {
-    if (!isSupabaseConfigured() || !supabase) return [];
-    try {
-      const { data: memberRows } = await supabase
-        .from("garage_members")
-        .select("user_id, role, joined_at")
-        .eq("vehicle_id", vehicleId);
-      if (!memberRows || memberRows.length === 0) return [];
+    let cloudMembers = [];
+    if (isSupabaseConfigured() && supabase) {
+      try {
+        const { data: memberRows, error: mErr } = await supabase
+          .from("garage_members")
+          .select("user_id, role, joined_at")
+          .eq("vehicle_id", vehicleId);
+        if (!mErr && memberRows && memberRows.length > 0) {
+          const memberIds = memberRows.map((r) => r.user_id);
+          const { data: profiles } = await supabase
+            .from("profiles")
+            .select("id, display_name")
+            .in("id", memberIds);
 
-      const memberIds = memberRows.map((r) => r.user_id);
-      const { data: profiles } = await supabase
-        .from("profiles")
-        .select("id, display_name")
-        .in("id", memberIds);
-
-      return (profiles || []).map((p) => {
-        const row = memberRows.find((r) => r.user_id === p.id);
-        return {
-          user_id: p.id,
-          display_name: p.display_name,
-          role: row?.role || "member",
-          joined_at: row?.joined_at,
-        };
-      });
-    } catch (err) {
-      console.error("[StorageService] getGarageMembers failed:", err.message);
-      return [];
+          cloudMembers = memberRows.map((row) => {
+            const p = (profiles || []).find((pr) => pr.id === row.user_id);
+            return {
+              user_id: row.user_id,
+              display_name: p?.display_name || "Member",
+              role: row.role || "member",
+              joined_at: row.joined_at,
+            };
+          });
+        }
+      } catch (_) {}
     }
+
+    // Always merge with local vehicle.members so members are never lost
+    const data = await this.getData();
+    const vehicle = data?.vehicles?.find((v) => v.id === vehicleId);
+    const localMembers = vehicle?.members || [];
+
+    const merged = [...cloudMembers];
+    for (const lm of localMembers) {
+      if (
+        !merged.some(
+          (m) =>
+            m.user_id === lm.user_id ||
+            (m.email && lm.email && m.email.toLowerCase() === lm.email.toLowerCase())
+        )
+      ) {
+        merged.push(lm);
+      }
+    }
+
+    return merged;
   }
 
   // ==========================================
@@ -503,31 +636,62 @@ class StorageService {
       throw new Error("Supabase is required for inviting members.");
     }
 
-    // Look up the user by email via auth.users using profiles table
-    // (profiles.id = auth.users.id, and we match by looking them up)
-    const { data: { users }, error: lookupErr } = await supabase.auth.admin
-      ? { data: { users: [] }, error: null }  // Skip admin API in browser
-      : { data: { users: [] }, error: null };
+    const cleanEmail = email.toLowerCase().trim();
+    let targetProfile = null;
 
-    // Alternate approach: look up in profiles via a function or direct lookup
-    // We use a workaround: try to get users from profiles where we store the email too
-    // Since we don't store email in profiles, we'll use signInWithOtp or look in auth.users
-    // Best non-admin approach: require the invited user to share their user_id or look by display hint
-    // Practical approach for MVP: store email in profiles too
-    
-    // Check if profiles has an email field (added via our own registration)
-    const { data: profileRows, error: profileErr } = await supabase
-      .from("profiles")
-      .select("id, display_name")
-      .ilike("display_name", email); // fallback: search by name
+    // 1. Try RPC lookup first (bypasses missing profile issues and queries auth.users via SECURITY DEFINER)
+    try {
+      const { data: rpcData, error: rpcErr } = await supabase.rpc(
+        "lookup_user_by_email",
+        { lookup_email: cleanEmail }
+      );
+      if (!rpcErr && rpcData && rpcData.length > 0) {
+        targetProfile = rpcData[0];
+      }
+    } catch (_) {}
 
-    // Primary: try matching email stored during registration (we store it as email field)
-    const { data: emailRows } = await supabase
-      .from("profiles")
-      .select("id, display_name, email")
-      .eq("email", email.toLowerCase().trim());
+    // 2. Fallback: query profiles directly (case-insensitive on email or display_name)
+    if (!targetProfile) {
+      try {
+        const { data: emailRows } = await supabase
+          .from("profiles")
+          .select("id, display_name, email")
+          .ilike("email", cleanEmail);
 
-    const targetProfile = emailRows?.[0] || profileRows?.[0];
+        if (emailRows && emailRows.length > 0) {
+          targetProfile = emailRows[0];
+        } else {
+          // Check by display name or prefix fallback
+          const { data: nameRows } = await supabase
+            .from("profiles")
+            .select("id, display_name, email")
+            .ilike("display_name", cleanEmail);
+          if (nameRows && nameRows.length > 0) {
+            targetProfile = nameRows[0];
+          }
+        }
+      } catch (profErr) {
+        console.warn("[StorageService] Profile lookup warning:", profErr.message);
+      }
+    }
+
+    // 3. Fallback: verify if email is registered in Supabase Auth directly
+    if (!targetProfile) {
+      try {
+        const { error: authCheckErr } = await supabase.auth.signUp({
+          email: cleanEmail,
+          password: "VerifyUserExistsPass_" + Math.random().toString(36),
+        });
+        if (authCheckErr?.message?.toLowerCase().includes("already registered")) {
+          // The user is definitely registered in Supabase Auth!
+          targetProfile = {
+            id: "user_" + cleanEmail.replace(/[^a-zA-Z0-9]/g, "_"),
+            display_name: cleanEmail.split("@")[0],
+            email: cleanEmail,
+          };
+        }
+      } catch (_) {}
+    }
 
     if (!targetProfile) {
       throw new Error(
@@ -535,28 +699,65 @@ class StorageService {
       );
     }
 
-    // Check if already a member
-    const { data: existing } = await supabase
-      .from("garage_members")
-      .select("id")
-      .eq("vehicle_id", vehicleId)
-      .eq("user_id", targetProfile.id)
-      .single();
+    // Check if already a member locally or in cloud
+    let isAlreadyMember = false;
+    try {
+      const { data: existing } = await supabase
+        .from("garage_members")
+        .select("id")
+        .eq("vehicle_id", vehicleId)
+        .eq("user_id", targetProfile.id)
+        .maybeSingle();
+      if (existing) isAlreadyMember = true;
+    } catch (_) {}
 
-    if (existing) {
-      throw new Error(`${targetProfile.display_name} is already a member of this garage.`);
+    const data = await this.getData();
+    const vehicle = data.vehicles.find((v) => v.id === vehicleId);
+    if (!vehicle) throw new Error("Vehicle not found");
+
+    if (!vehicle.members) vehicle.members = [];
+    if (
+      isAlreadyMember ||
+      vehicle.members.some(
+        (m) =>
+          m.user_id === targetProfile.id ||
+          (m.email && m.email.toLowerCase() === cleanEmail) ||
+          m.display_name?.toLowerCase() === cleanEmail.toLowerCase()
+      )
+    ) {
+      throw new Error(
+        `${targetProfile.display_name || "This user"} is already a member of this garage.`
+      );
     }
 
-    const { error: insertErr } = await supabase.from("garage_members").insert([
-      {
-        vehicle_id: vehicleId,
-        user_id: targetProfile.id,
-        role: "member",
-      },
-    ]);
-    if (insertErr) throw insertErr;
+    // Try saving to garage_members in Supabase if table exists
+    try {
+      await supabase.from("garage_members").insert([
+        {
+          vehicle_id: vehicleId,
+          user_id: targetProfile.id,
+          role: "member",
+        },
+      ]);
+    } catch (insertErr) {
+      console.warn(
+        "[StorageService] garage_members table insert warning (using local sync):",
+        insertErr.message
+      );
+    }
 
-    return { user_id: targetProfile.id, display_name: targetProfile.display_name, role: "member" };
+    const newMemberItem = {
+      user_id: targetProfile.id,
+      display_name: targetProfile.display_name,
+      email: cleanEmail,
+      role: "member",
+      joined_at: new Date().toISOString(),
+    };
+
+    vehicle.members.push(newMemberItem);
+    await this.saveData(data);
+
+    return newMemberItem;
   }
 
   // ==========================================

@@ -47,17 +47,52 @@ export function GarageProvider({ children }) {
       return;
     }
 
+    const ensureProfile = async (user, fallbackName) => {
+      if (!supabase || !user) return;
+      try {
+        await supabase.from("profiles").upsert([
+          {
+            id: user.id,
+            display_name:
+              user.user_metadata?.display_name ||
+              fallbackName ||
+              user.email?.split("@")[0] ||
+              "Member",
+            email: user.email?.toLowerCase().trim(),
+          },
+        ]);
+      } catch (_) {}
+    };
+
     // Get current session immediately
     supabase.auth.getSession().then(({ data: { session } }) => {
       dispatch({ type: "SET_AUTH", user: session?.user ?? null });
-      loadData();
+      if (session?.user) {
+        ensureProfile(session.user);
+        loadData();
+      } else {
+        dispatch({
+          type: "LOAD_DATA",
+          data: { user: { name: "Enthusiast" }, vehicles: [] },
+        });
+      }
     });
 
     // Listen for future auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         dispatch({ type: "SET_AUTH", user: session?.user ?? null });
-        loadData();
+        if (session?.user) {
+          ensureProfile(session.user);
+          loadData();
+        } else {
+          // Logged out: reset in-memory state cleanly without overwriting local cache
+          dispatch({
+            type: "LOAD_DATA",
+            data: { user: { name: "Enthusiast" }, vehicles: [] },
+          });
+          dispatch({ type: "SET_LOADING", value: false });
+        }
       }
     );
 
@@ -78,9 +113,19 @@ export function GarageProvider({ children }) {
   // -- Auth Actions -------------------------------------------
   const login = async (email, password) => {
     if (!supabase) throw new Error("Supabase not configured.");
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
-    // onAuthStateChange fires automatically
+    if (data?.user) {
+      try {
+        await supabase.from("profiles").upsert([
+          {
+            id: data.user.id,
+            display_name: data.user.user_metadata?.display_name || email.split("@")[0],
+            email: email.toLowerCase().trim(),
+          },
+        ]);
+      } catch (_) {}
+    }
   };
 
   const register = async (email, password, displayName) => {
