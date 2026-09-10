@@ -62,6 +62,50 @@ async function getCurrentAuthUser() {
   }
 }
 
+// ============================================================
+// Helpers for cross-user vehicle member mapping
+// ============================================================
+function extractMembersFromVehicle(veh) {
+  if (!veh) return [];
+  const members = [];
+
+  // Source 1: JSONB column 'members' on vehicles (if column exists)
+  if (Array.isArray(veh.members)) {
+    for (const m of veh.members) {
+      if (m && typeof m === "object") members.push(m);
+    }
+  }
+
+  // Source 2: JSONB 'media' registry fallback (guarantees instant cross-user sharing)
+  if (Array.isArray(veh.media)) {
+    const reg = veh.media.find(
+      (item) => item && item._is_member_registry && Array.isArray(item.members)
+    );
+    if (reg) {
+      for (const rm of reg.members) {
+        if (
+          !members.some(
+            (m) =>
+              (m.user_id && rm.user_id && m.user_id === rm.user_id) ||
+              (m.email &&
+                rm.email &&
+                m.email.toLowerCase() === rm.email.toLowerCase())
+          )
+        ) {
+          members.push(rm);
+        }
+      }
+    }
+  }
+
+  return members;
+}
+
+function getCleanMedia(mediaArray) {
+  if (!Array.isArray(mediaArray)) return [];
+  return mediaArray.filter((m) => !m || !m._is_member_registry);
+}
+
 class StorageService {
   async init(storageKey = "garage_data_guest") {
     const data = await localforage.getItem(storageKey);
@@ -114,22 +158,35 @@ class StorageService {
         }
       } catch (_) {}
 
-      // 2. Query vehicles: user's owned vehicles OR shared vehicles
-      let vehiclesQuery = supabase
-        .from("vehicles")
-        .select("*")
-        .order("created_at", { ascending: true });
+      // 2. Query vehicles: owned vehicles, shared via garage_members, or shared via members list
+      let dbVehicles = [];
+      try {
+        let vehiclesQuery = supabase
+          .from("vehicles")
+          .select("*")
+          .order("created_at", { ascending: true });
 
-      if (sharedVehicleIds.length > 0) {
-        vehiclesQuery = vehiclesQuery.or(
-          `user_id.eq.${authUser.id},id.in.(${sharedVehicleIds.join(",")})`
-        );
-      } else {
-        vehiclesQuery = vehiclesQuery.eq("user_id", authUser.id);
+        const { data: rawVehicles, error: vErr } = await vehiclesQuery;
+        if (!vErr && rawVehicles) {
+          dbVehicles = rawVehicles.filter((veh) => {
+            // Owned by this user
+            if (veh.user_id === authUser.id) return true;
+            // Shared via garage_members table
+            if (sharedVehicleIds.includes(veh.id)) return true;
+            // Shared via vehicle's member registry (JSONB column, media metadata, or email match)
+            const vMembers = extractMembersFromVehicle(veh);
+            return vMembers.some(
+              (m) =>
+                (m.user_id && authUser.id && m.user_id === authUser.id) ||
+                (m.email &&
+                  authUser.email &&
+                  m.email.toLowerCase() === authUser.email.toLowerCase())
+            );
+          });
+        }
+      } catch (e) {
+        console.warn("[StorageService] Vehicles query warning:", e.message);
       }
-
-      const { data: dbVehicles, error: vErr } = await vehiclesQuery;
-      if (vErr) throw vErr;
 
       const validDbVehicles = dbVehicles || [];
       const vehIds = validDbVehicles.map((v) => v.id);
@@ -194,7 +251,10 @@ class StorageService {
           return { ...mod, ...calc };
         });
 
-        const vMembers = allMemberRows
+        // Use extracted members (from JSONB members column or media registry)
+        const extractedMembers = extractMembersFromVehicle(veh);
+
+        const cloudVMembers = allMemberRows
           .filter((m) => m.vehicle_id === veh.id)
           .map((m) => {
             const p = allProfiles.find((pr) => pr.id === m.user_id);
@@ -207,12 +267,26 @@ class StorageService {
             };
           });
 
+        // Merge: extractedMembers + cloudVMembers
+        const combinedMembers = [...extractedMembers];
+        for (const cm of cloudVMembers) {
+          if (
+            !combinedMembers.some(
+              (m) =>
+                (m.user_id && cm.user_id && m.user_id === cm.user_id) ||
+                (m.email && cm.email && m.email.toLowerCase() === cm.email.toLowerCase())
+            )
+          ) {
+            combinedMembers.push(cm);
+          }
+        }
+
         return {
           ...veh,
-          media: veh.media || [],
+          media: getCleanMedia(veh.media),
           maintenance_modules: modules,
           service_history: rawHistory,
-          members: vMembers,
+          members: combinedMembers,
         };
       });
 
@@ -220,7 +294,7 @@ class StorageService {
       if (localData?.vehicles && localData.vehicles.length > 0) {
         for (const locVeh of localData.vehicles) {
           const existsInCloud = assembledVehicles.some((v) => v.id === locVeh.id);
-          if (!existsInCloud) {
+          if (!existsInCloud && (locVeh.user_id === authUser.id || !locVeh.user_id)) {
             assembledVehicles.push(locVeh);
             // Sync to Supabase in background
             supabase
@@ -458,8 +532,8 @@ class StorageService {
     }
 
     if (isSupabaseConfigured() && supabase) {
+      // 1. Try appending to odometer_history (if table exists)
       try {
-        // 1. Append to odometer_history
         await supabase.from("odometer_history").insert([
           {
             vehicle_id: vehicleId,
@@ -470,8 +544,10 @@ class StorageService {
             is_rewound: false,
           },
         ]);
+      } catch (_) {}
 
-        // 2. Update vehicle current_odometer
+      // 2. Update vehicle current_odometer in Supabase (independent of odometer_history)
+      try {
         const { error } = await supabase
           .from("vehicles")
           .update({
@@ -605,6 +681,29 @@ class StorageService {
           });
         }
       } catch (_) {}
+
+      // Fallback: fetch vehicle row to inspect JSONB members column or media registry
+      try {
+        const { data: vehRow } = await supabase
+          .from("vehicles")
+          .select("members, media")
+          .eq("id", vehicleId)
+          .maybeSingle();
+        if (vehRow) {
+          const rawM = extractMembersFromVehicle(vehRow);
+          for (const rm of rawM) {
+            if (
+              !cloudMembers.some(
+                (cm) =>
+                  (cm.user_id && rm.user_id && cm.user_id === rm.user_id) ||
+                  (cm.email && rm.email && cm.email.toLowerCase() === rm.email.toLowerCase())
+              )
+            ) {
+              cloudMembers.push(rm);
+            }
+          }
+        }
+      } catch (_) {}
     }
 
     // Always merge with local vehicle.members so members are never lost
@@ -720,29 +819,13 @@ class StorageService {
       isAlreadyMember ||
       vehicle.members.some(
         (m) =>
-          m.user_id === targetProfile.id ||
+          (m.user_id && targetProfile.id && m.user_id === targetProfile.id) ||
           (m.email && m.email.toLowerCase() === cleanEmail) ||
-          m.display_name?.toLowerCase() === cleanEmail.toLowerCase()
+          (m.display_name && m.display_name.toLowerCase() === cleanEmail.toLowerCase())
       )
     ) {
       throw new Error(
         `${targetProfile.display_name || "This user"} is already a member of this garage.`
-      );
-    }
-
-    // Try saving to garage_members in Supabase if table exists
-    try {
-      await supabase.from("garage_members").insert([
-        {
-          vehicle_id: vehicleId,
-          user_id: targetProfile.id,
-          role: "member",
-        },
-      ]);
-    } catch (insertErr) {
-      console.warn(
-        "[StorageService] garage_members table insert warning (using local sync):",
-        insertErr.message
       );
     }
 
@@ -755,6 +838,62 @@ class StorageService {
     };
 
     vehicle.members.push(newMemberItem);
+
+    // Prepare clean cloud member objects
+    const membersForCloud = vehicle.members.map((m) => ({
+      user_id: m.user_id,
+      display_name: m.display_name,
+      email: m.email || null,
+      role: m.role,
+      joined_at: m.joined_at,
+    }));
+
+    // Multi-tier persistence to Supabase:
+    // 1. garage_members table (if exists and targetProfile has valid UUID)
+    if (targetProfile.id && !targetProfile.id.startsWith("user_") && !targetProfile.id.startsWith("invited_")) {
+      try {
+        await supabase.from("garage_members").insert([
+          {
+            vehicle_id: vehicleId,
+            user_id: targetProfile.id,
+            role: "member",
+          },
+        ]);
+      } catch (_) {}
+    }
+
+    // 2. vehicles.members JSONB column (if column exists)
+    try {
+      await supabase
+        .from("vehicles")
+        .update({ members: membersForCloud, updated_at: new Date().toISOString() })
+        .eq("id", vehicleId);
+    } catch (_) {}
+
+    // 3. vehicles.media JSONB metadata registry fallback
+    // (Guarantees immediate cross-user sharing in Supabase without requiring table migrations)
+    try {
+      const { data: curVeh } = await supabase
+        .from("vehicles")
+        .select("media")
+        .eq("id", vehicleId)
+        .single();
+      let rawMedia = Array.isArray(curVeh?.media) ? [...curVeh.media] : [];
+      rawMedia = rawMedia.filter((m) => !m || !m._is_member_registry);
+      rawMedia.push({
+        id: "_shared_members_registry",
+        _is_member_registry: true,
+        members: membersForCloud,
+        updated_at: new Date().toISOString(),
+      });
+      await supabase
+        .from("vehicles")
+        .update({ media: rawMedia, updated_at: new Date().toISOString() })
+        .eq("id", vehicleId);
+    } catch (mediaErr) {
+      console.warn("[StorageService] media registry update error:", mediaErr.message);
+    }
+
     await this.saveData(data);
 
     return newMemberItem;
@@ -830,9 +969,20 @@ class StorageService {
 
     if (isSupabaseConfigured() && supabase) {
       try {
+        const { data: curVeh } = await supabase
+          .from("vehicles")
+          .select("media")
+          .eq("id", vehicleId)
+          .single();
+        const registryItem = (curVeh?.media || []).find(
+          (m) => m && m._is_member_registry
+        );
+        const toSave = [...vehicle.media];
+        if (registryItem) toSave.push(registryItem);
+
         await supabase
           .from("vehicles")
-          .update({ media: vehicle.media, updated_at: new Date().toISOString() })
+          .update({ media: toSave, updated_at: new Date().toISOString() })
           .eq("id", vehicleId);
       } catch (err) {
         console.error("[StorageService] Supabase media update error:", err.message);
@@ -852,9 +1002,20 @@ class StorageService {
 
     if (isSupabaseConfigured() && supabase) {
       try {
+        const { data: curVeh } = await supabase
+          .from("vehicles")
+          .select("media")
+          .eq("id", vehicleId)
+          .single();
+        const registryItem = (curVeh?.media || []).find(
+          (m) => m && m._is_member_registry
+        );
+        const toSave = [...vehicle.media];
+        if (registryItem) toSave.push(registryItem);
+
         await supabase
           .from("vehicles")
-          .update({ media: vehicle.media, updated_at: new Date().toISOString() })
+          .update({ media: toSave, updated_at: new Date().toISOString() })
           .eq("id", vehicleId);
       } catch (err) {
         console.error("[StorageService] Supabase media remove error:", err.message);

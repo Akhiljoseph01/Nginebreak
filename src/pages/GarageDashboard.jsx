@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import { Link } from "react-router-dom";
 import { useGarage } from "../context/GarageContext";
 import { STATUS } from "../services/CalculationEngine";
@@ -236,7 +236,11 @@ function ComingSoonChip({ label, icon }) {
 
 // ── Main Dashboard ──────────────────────────────────────────
 export default function GarageDashboard() {
-  const { vehicles, user, loading, logout } = useGarage();
+  const { vehicles, user, currentUser, loading, logout } = useGarage();
+
+  const sharedVehiclesCount = (vehicles || []).filter(
+    (v) => v.user_id && currentUser?.id && v.user_id !== currentUser.id
+  ).length;
 
   if (loading)
     return (
@@ -313,6 +317,32 @@ export default function GarageDashboard() {
         </div>
       ) : (
         <>
+          {/* ── Co-owner Notification Banner ── */}
+          {sharedVehiclesCount > 0 && (
+            <div
+              style={{
+                background: "rgba(249, 115, 22, 0.08)",
+                border: "1px solid rgba(249, 115, 22, 0.25)",
+                borderRadius: 12,
+                padding: "10px 14px",
+                marginBottom: 16,
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+              }}
+            >
+              <span style={{ fontSize: "1.1rem" }}>📩</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--text-primary)" }}>
+                  Shared Co-Owner Access Active
+                </div>
+                <div style={{ fontSize: "0.75rem", color: "var(--text-secondary)" }}>
+                  You have access to {sharedVehiclesCount} shared vehicle{sharedVehiclesCount > 1 ? "s" : ""}. Track maintenance & odometer updates in sync!
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* ── Vehicles ──────────────────────── */}
           <div
             style={{

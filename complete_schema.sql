@@ -101,9 +101,15 @@ CREATE TABLE IF NOT EXISTS public.vehicles (
   year INTEGER NOT NULL,
   current_odometer INTEGER NOT NULL DEFAULT 0,
   media JSONB DEFAULT '[]'::jsonb,
+  members JSONB DEFAULT '[]'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Ensure all columns exist even if vehicles table was created in an earlier migration
+ALTER TABLE public.vehicles ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL;
+ALTER TABLE public.vehicles ADD COLUMN IF NOT EXISTS media JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.vehicles ADD COLUMN IF NOT EXISTS members JSONB DEFAULT '[]'::jsonb;
 
 -- 7. Garage Members Table (multi-user shared access to vehicles)
 CREATE TABLE IF NOT EXISTS public.garage_members (
