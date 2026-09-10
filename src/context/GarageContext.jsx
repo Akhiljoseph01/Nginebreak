@@ -1,24 +1,34 @@
-import React, { createContext, useContext, useReducer, useEffect } from 'react';
-import StorageService from '../services/StorageService';
+import React, { createContext, useContext, useReducer, useEffect } from "react";
+import StorageService from "../services/StorageService";
+import { supabase, isSupabaseConfigured } from "../services/supabaseClient";
 
 const GarageContext = createContext();
 
 const initialState = {
   vehicles: [],
-  user: { name: 'Enthusiast' },
+  user: { name: "Enthusiast" },
+  currentUser: null,       // Supabase Auth user
+  authLoading: true,       // true until auth session resolved
   loading: true,
-  activeVehicleId: null
+  activeVehicleId: null,
 };
 
 function garageReducer(state, action) {
   switch (action.type) {
-    case 'LOAD_DATA':
-      return { ...state, vehicles: action.data.vehicles, user: action.data.user, loading: false };
-    case 'SET_VEHICLES':
+    case "SET_AUTH":
+      return { ...state, currentUser: action.user, authLoading: false };
+    case "LOAD_DATA":
+      return {
+        ...state,
+        vehicles: action.data.vehicles,
+        user: action.data.user,
+        loading: false,
+      };
+    case "SET_VEHICLES":
       return { ...state, vehicles: action.vehicles };
-    case 'SET_ACTIVE_VEHICLE':
+    case "SET_ACTIVE_VEHICLE":
       return { ...state, activeVehicleId: action.id };
-    case 'SET_LOADING':
+    case "SET_LOADING":
       return { ...state, loading: action.value };
     default:
       return state;
@@ -28,58 +38,168 @@ function garageReducer(state, action) {
 export function GarageProvider({ children }) {
   const [state, dispatch] = useReducer(garageReducer, initialState);
 
+  // -- Auth session listener ----------------------------------
   useEffect(() => {
-    (async () => {
-      const data = await StorageService.getData();
-      dispatch({ type: 'LOAD_DATA', data });
-    })();
+    if (!isSupabaseConfigured() || !supabase) {
+      // No Supabase � run in guest mode
+      dispatch({ type: "SET_AUTH", user: null });
+      loadData();
+      return;
+    }
+
+    // Get current session immediately
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      dispatch({ type: "SET_AUTH", user: session?.user ?? null });
+      loadData();
+    });
+
+    // Listen for future auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        dispatch({ type: "SET_AUTH", user: session?.user ?? null });
+        loadData();
+      }
+    );
+
+    return () => subscription.unsubscribe();
   }, []);
 
+  async function loadData() {
+    dispatch({ type: "SET_LOADING", value: true });
+    try {
+      const data = await StorageService.getData();
+      dispatch({ type: "LOAD_DATA", data });
+    } catch (err) {
+      console.error("[GarageContext] loadData failed:", err.message);
+      dispatch({ type: "SET_LOADING", value: false });
+    }
+  }
+
+  // -- Auth Actions -------------------------------------------
+  const login = async (email, password) => {
+    if (!supabase) throw new Error("Supabase not configured.");
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    // onAuthStateChange fires automatically
+  };
+
+  const register = async (email, password, displayName) => {
+    if (!supabase) throw new Error("Supabase not configured.");
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          display_name: displayName || email.split("@")[0],
+        },
+      },
+    });
+    if (error) throw error;
+
+    // Insert into profiles (with email for invite lookup)
+    if (data?.user) {
+      try {
+        await supabase.from("profiles").upsert([
+          {
+            id: data.user.id,
+            display_name: displayName || email.split("@")[0],
+            email: email.toLowerCase().trim(),
+          },
+        ]);
+      } catch (profileErr) {
+        console.warn("[GarageContext] Profile upsert warning:", profileErr);
+      }
+    }
+    return data;
+  };
+
+  const logout = async () => {
+    if (!supabase) return;
+    await supabase.auth.signOut();
+  };
+
   const addVehicle = async (params) => {
-    await StorageService.addVehicle(params);
+    const createdVehicle = await StorageService.addVehicle(params);
     const data = await StorageService.getData();
-    dispatch({ type: 'LOAD_DATA', data });
-    return data.vehicles[data.vehicles.length - 1];
+    dispatch({ type: "LOAD_DATA", data });
+    return (
+      (data?.vehicles && data.vehicles.find((v) => v.id === createdVehicle?.id)) ||
+      (data?.vehicles && data.vehicles[data.vehicles.length - 1]) ||
+      createdVehicle
+    );
   };
 
   const addMaintenanceModule = async (vehicleId, params) => {
     const data = await StorageService.addMaintenanceModule(vehicleId, params);
-    dispatch({ type: 'SET_VEHICLES', vehicles: data.vehicles });
+    dispatch({ type: "SET_VEHICLES", vehicles: data.vehicles });
   };
 
   const updateOdometer = async (vehicleId, newOdometer) => {
     const data = await StorageService.updateOdometer(vehicleId, newOdometer);
-    dispatch({ type: 'SET_VEHICLES', vehicles: data.vehicles });
+    dispatch({ type: "SET_VEHICLES", vehicles: data.vehicles });
+  };
+
+  const rewindOdometer = async (historyId, vehicleId) => {
+    const data = await StorageService.rewindOdometer(historyId, vehicleId);
+    dispatch({ type: "SET_VEHICLES", vehicles: data.vehicles });
+  };
+
+  const getOdometerHistory = async (vehicleId) => {
+    return StorageService.getOdometerHistory(vehicleId);
+  };
+
+  const getGarageMembers = async (vehicleId) => {
+    return StorageService.getGarageMembers(vehicleId);
+  };
+
+  const inviteMember = async (vehicleId, email) => {
+    const newMember = await StorageService.inviteMember(vehicleId, email);
+    // Refresh members on the local vehicle state
+    const data = await StorageService.getData();
+    dispatch({ type: "SET_VEHICLES", vehicles: data.vehicles });
+    return newMember;
   };
 
   const completeService = async (vehicleId, moduleId, odometer, date) => {
     const data = await StorageService.completeService(vehicleId, moduleId, odometer, date);
-    dispatch({ type: 'SET_VEHICLES', vehicles: data.vehicles });
+    dispatch({ type: "SET_VEHICLES", vehicles: data.vehicles });
   };
 
   const addVehicleMedia = async (vehicleId, mediaItem) => {
     const data = await StorageService.addVehicleMedia(vehicleId, mediaItem);
-    dispatch({ type: 'SET_VEHICLES', vehicles: data.vehicles });
+    dispatch({ type: "SET_VEHICLES", vehicles: data.vehicles });
   };
 
   const removeVehicleMedia = async (vehicleId, mediaId) => {
     const data = await StorageService.removeVehicleMedia(vehicleId, mediaId);
-    dispatch({ type: 'SET_VEHICLES', vehicles: data.vehicles });
+    dispatch({ type: "SET_VEHICLES", vehicles: data.vehicles });
   };
 
-  const setActiveVehicle = (id) => dispatch({ type: 'SET_ACTIVE_VEHICLE', id });
+  const setActiveVehicle = (id) =>
+    dispatch({ type: "SET_ACTIVE_VEHICLE", id });
 
   return (
-    <GarageContext.Provider value={{
-      ...state,
-      addVehicle,
-      addMaintenanceModule,
-      updateOdometer,
-      completeService,
-      addVehicleMedia,
-      removeVehicleMedia,
-      setActiveVehicle
-    }}>
+    <GarageContext.Provider
+      value={{
+        ...state,
+        // Auth
+        login,
+        register,
+        logout,
+        // Garage
+        addVehicle,
+        addMaintenanceModule,
+        updateOdometer,
+        rewindOdometer,
+        getOdometerHistory,
+        getGarageMembers,
+        inviteMember,
+        completeService,
+        addVehicleMedia,
+        removeVehicleMedia,
+        setActiveVehicle,
+      }}
+    >
       {children}
     </GarageContext.Provider>
   );

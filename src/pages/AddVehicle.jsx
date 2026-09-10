@@ -34,10 +34,19 @@ export default function AddVehicle() {
   const handleSubmit = async () => {
     if (!form.make || !form.model || !form.odometer) return;
     setSaving(true);
-    const vehicle = await addVehicle(form);
-    setActiveVehicle(vehicle.id);
-    setSaving(false);
-    navigate(`/vehicle/${vehicle.id}`);
+    try {
+      const vehicle = await addVehicle(form);
+      if (vehicle?.id) {
+        setActiveVehicle(vehicle.id);
+        navigate(`/vehicle/${vehicle.id}`);
+      } else {
+        navigate('/');
+      }
+    } catch (err) {
+      console.error("[AddVehicle] Failed to save vehicle:", err);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
