@@ -10,11 +10,11 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico'],
       manifest: {
-        name: 'Digital Garage',
-        short_name: 'Garage',
-        description: 'Your vehicle. Your maintenance. Your garage.',
-        theme_color: '#121212',
-        background_color: '#121212',
+        name: 'Nginebreak',
+        short_name: 'Nginebreak',
+        description: 'Your vehicle. Your maintenance. Your story.',
+        theme_color: '#ffffff',
+        background_color: '#F5F5F5',
         display: 'standalone',
         orientation: 'portrait',
         start_url: '/',
@@ -23,12 +23,17 @@ export default defineConfig({
         ]
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,webp}'],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
             handler: 'CacheFirst',
             options: { cacheName: 'google-fonts-cache' }
+          },
+          {
+            urlPattern: /^https:\/\/sqkftwstcfijaecbupbf\.supabase\.co\/.*/i,
+            handler: 'NetworkFirst',
+            options: { cacheName: 'supabase-api-cache', networkTimeoutSeconds: 5 }
           }
         ]
       }

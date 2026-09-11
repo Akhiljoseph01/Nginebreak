@@ -1,6 +1,13 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useGarage } from '../context/GarageContext';
 import { STATUS } from '../services/CalculationEngine';
+import {
+  isUserAdmin,
+  activateAdminMode,
+  deactivateAdminMode,
+  getAdminSettings,
+  saveAdminSettings,
+} from '../utils/adminAuth';
 import {
   Pencil,
   Check,
@@ -15,6 +22,12 @@ import {
   Wrench,
   LogOut,
   AlertTriangle,
+  Sliders,
+  Database,
+  Cpu,
+  Key,
+  CheckCircle2,
+  Zap,
 } from 'lucide-react';
 
 const LEVELS = [
@@ -73,7 +86,7 @@ function Toggle({ checked, onChange, id }) {
 }
 
 // A single settings row
-function SettingRow({ icon: Icon, label, desc, right }) {
+function SettingRow({ icon: Icon, label, desc, right, badge }) {
   return (
     <div
       style={{
@@ -101,11 +114,28 @@ function SettingRow({ icon: Icon, label, desc, right }) {
         <Icon size={15} />
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-          {label}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+            {label}
+          </span>
+          {badge && (
+            <span
+              style={{
+                fontSize: '0.62rem',
+                fontWeight: 700,
+                padding: '1px 6px',
+                borderRadius: 4,
+                background: 'rgba(249, 115, 22, 0.15)',
+                color: 'var(--accent-color)',
+                textTransform: 'uppercase',
+              }}
+            >
+              {badge}
+            </span>
+          )}
         </div>
         {desc && (
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 1 }}>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>
             {desc}
           </div>
         )}
@@ -116,7 +146,36 @@ function SettingRow({ icon: Icon, label, desc, right }) {
 }
 
 export default function Profile() {
-  const { vehicles, user, logout } = useGarage();
+  const { vehicles, user, currentUser, logout } = useGarage();
+
+  // Admin status and settings
+  const [isAdmin, setIsAdmin] = useState(() => isUserAdmin(currentUser));
+  const [adminSettings, setAdminSettings] = useState(() => getAdminSettings());
+  const [showAdminLogin, setShowAdminLogin] = useState(false);
+  const [adminCredInput, setAdminCredInput] = useState('');
+  const [adminError, setAdminError] = useState('');
+  const [adminSuccess, setAdminSuccess] = useState('');
+
+  // Sync admin state
+  useEffect(() => {
+    setIsAdmin(isUserAdmin(currentUser));
+    const handleStateChange = () => {
+      setIsAdmin(isUserAdmin(currentUser));
+      setAdminSettings(getAdminSettings());
+    };
+    window.addEventListener('admin_state_changed', handleStateChange);
+    window.addEventListener('admin_settings_changed', handleStateChange);
+    return () => {
+      window.removeEventListener('admin_state_changed', handleStateChange);
+      window.removeEventListener('admin_settings_changed', handleStateChange);
+    };
+  }, [currentUser]);
+
+  // Handler to update an admin setting
+  const updateSetting = (key, val) => {
+    const updated = saveAdminSettings({ [key]: val });
+    setAdminSettings(updated);
+  };
 
   // Stats
   const totalVehicles = vehicles.length;
@@ -133,14 +192,8 @@ export default function Profile() {
 
   // Edit profile state
   const [editMode, setEditMode] = useState(false);
-  const [displayName, setDisplayName] = useState(user?.name || 'Enthusiast');
+  const [displayName, setDisplayName] = useState(user?.name || (isAdmin ? 'System Admin' : 'Enthusiast'));
   const [nameInput, setNameInput] = useState(displayName);
-
-  // Settings toggles (UI-only, no backend)
-  const [notifService, setNotifService]   = useState(true);
-  const [notifOverdue, setNotifOverdue]   = useState(true);
-  const [notifUpdates, setNotifUpdates]   = useState(false);
-  const [darkMode, setDarkMode]           = useState(false);
 
   const nameRef = useRef();
 
@@ -154,21 +207,70 @@ export default function Profile() {
     setEditMode(false);
   };
 
+  const handleAdminAuthSubmit = (e) => {
+    e.preventDefault();
+    setAdminError('');
+    const res = activateAdminMode(adminCredInput);
+    if (res.success) {
+      setAdminSuccess('Admin privileges unlocked!');
+      setTimeout(() => {
+        setAdminSuccess('');
+        setShowAdminLogin(false);
+        setAdminCredInput('');
+      }, 1000);
+    } else {
+      setAdminError(res.error || 'Invalid credentials');
+    }
+  };
+
+  const handleDeactivateAdmin = () => {
+    deactivateAdminMode();
+  };
+
   // Derived initials
-  const initials = displayName?.[0]?.toUpperCase() || 'G';
+  const initials = isAdmin ? 'A' : (displayName?.[0]?.toUpperCase() || 'G');
 
   return (
     <div className="app-container" style={{ paddingTop: 0 }}>
 
       {/* ── Page header ───────────────────────────────── */}
-      <div className="page-header" style={{ marginBottom: 20 }}>
-        <h1 className="page-title">Profile</h1>
+      <div className="page-header" style={{ marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div>
+          <h1 className="page-title">{isAdmin ? 'Admin Profile' : 'Profile'}</h1>
+          <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+            {isAdmin ? 'System Administration & Global Controls' : 'Personal garage & driver stats'}
+          </p>
+        </div>
+        {isAdmin && (
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              fontSize: '0.7rem',
+              fontWeight: 700,
+              padding: '4px 8px',
+              borderRadius: 20,
+              background: 'linear-gradient(135deg, rgba(249,115,22,0.2), rgba(234,88,12,0.1))',
+              border: '1px solid var(--accent-color)',
+              color: 'var(--accent-color)',
+              letterSpacing: '0.04em',
+            }}
+          >
+            <Shield size={12} /> SUPERUSER
+          </span>
+        )}
       </div>
 
       {/* ── Profile card ──────────────────────────────── */}
       <div
         className="garage-card"
-        style={{ padding: '22px 18px 18px', marginBottom: 12 }}
+        style={{
+          padding: '22px 18px 18px',
+          marginBottom: 12,
+          border: isAdmin ? '1px solid rgba(249,115,22,0.35)' : '1px solid var(--border-color)',
+          background: isAdmin ? 'linear-gradient(180deg, rgba(249,115,22,0.03) 0%, var(--bg-card) 100%)' : 'var(--bg-card)',
+        }}
       >
         {/* Avatar row */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>
@@ -178,7 +280,9 @@ export default function Profile() {
               width: 60,
               height: 60,
               borderRadius: '50%',
-              background: 'linear-gradient(135deg, #FF4D00, #FF8A50)',
+              background: isAdmin
+                ? 'linear-gradient(135deg, #FF4D00, #F59E0B)'
+                : 'linear-gradient(135deg, #FF4D00, #FF8A50)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -186,7 +290,7 @@ export default function Profile() {
               fontWeight: 800,
               color: '#fff',
               flexShrink: 0,
-              boxShadow: '0 4px 14px rgba(255,77,0,0.3)',
+              boxShadow: isAdmin ? '0 4px 18px rgba(245,158,11,0.35)' : '0 4px 14px rgba(255,77,0,0.3)',
               letterSpacing: '-0.02em',
             }}
           >
@@ -248,65 +352,74 @@ export default function Profile() {
                 </button>
               </div>
             ) : (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div
-                  style={{
-                    fontWeight: 800,
-                    fontSize: '1.05rem',
-                    color: 'var(--text-primary)',
-                    letterSpacing: '-0.01em',
-                  }}
-                >
-                  {displayName}
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span
+                    style={{
+                      fontWeight: 800,
+                      fontSize: '1.15rem',
+                      color: 'var(--text-primary)',
+                      letterSpacing: '-0.02em',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {displayName}
+                  </span>
+                  <button
+                    onClick={() => { setEditMode(true); setNameInput(displayName); }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      color: 'var(--text-muted)',
+                      padding: 2,
+                      display: 'flex',
+                    }}
+                  >
+                    <Pencil size={13} />
+                  </button>
                 </div>
-                <button
-                  onClick={() => { setNameInput(displayName); setEditMode(true); }}
-                  title="Edit name"
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    color: 'var(--text-muted)',
-                    padding: 3,
-                    display: 'flex',
-                    borderRadius: 6,
-                    transition: 'color 0.15s ease',
-                  }}
-                >
-                  <Pencil size={14} />
-                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+                  {isAdmin ? (
+                    <span
+                      style={{
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        color: 'var(--accent-color)',
+                        background: 'rgba(249,115,22,0.12)',
+                        padding: '2px 8px',
+                        borderRadius: 6,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                      }}
+                    >
+                      🛡️ System Administrator
+                    </span>
+                  ) : (
+                    <span
+                      style={{
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        color: 'var(--text-secondary)',
+                      }}
+                    >
+                      {level.emoji} {level.label}
+                    </span>
+                  )}
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>·</span>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                    {currentUser?.email || 'Local Garage'}
+                  </span>
+                </div>
               </div>
             )}
-
-            {/* Level chip — compact */}
-            <div
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 5,
-                marginTop: 4,
-                padding: '2px 9px 2px 6px',
-                borderRadius: 20,
-                background: 'var(--accent-light)',
-                border: '1px solid var(--accent-border)',
-              }}
-            >
-              <span style={{ fontSize: '0.78rem' }}>{level.emoji}</span>
-              <span
-                style={{
-                  fontSize: '0.72rem',
-                  fontWeight: 700,
-                  color: 'var(--accent-color)',
-                  letterSpacing: '0.01em',
-                }}
-              >
-                {level.label}
-              </span>
-            </div>
           </div>
         </div>
 
-        {/* Progress bar — compact */}
+        {/* Level progress (for regular user progress tracking) */}
         <div>
           <div
             style={{
@@ -351,7 +464,7 @@ export default function Profile() {
         </div>
       </div>
 
-      {/* ── Stats strip — inline ──────────────────────────── */}
+      {/* ── Stats strip ──────────────────────────── */}
       <div
         className="garage-card"
         style={{
@@ -389,108 +502,188 @@ export default function Profile() {
         ))}
       </div>
 
-      {/* ── Settings ──────────────────────────────────────── */}
-      <div className="garage-card" style={{ padding: '16px 18px', marginBottom: 12 }}>
+      {/* ── ADMIN-ONLY SWITCHING OPTIONS ──────────────────── */}
+      {isAdmin ? (
         <div
+          className="garage-card"
           style={{
-            fontSize: '0.65rem',
-            fontWeight: 700,
-            color: 'var(--text-muted)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.08em',
-            marginBottom: 4,
-          }}
-        >
-          Settings
-        </div>
-
-        <SettingRow
-          icon={Bell}
-          label="Service Reminders"
-          desc="Notify when a maintenance is due"
-          right={
-            <Toggle
-              id="notif-service"
-              checked={notifService}
-              onChange={e => setNotifService(e.target.checked)}
-            />
-          }
-        />
-        <SettingRow
-          icon={AlertTriangle}
-          label="Overdue Alerts"
-          desc="Alert when past scheduled service"
-          right={
-            <Toggle
-              id="notif-overdue"
-              checked={notifOverdue}
-              onChange={e => setNotifOverdue(e.target.checked)}
-            />
-          }
-        />
-        <SettingRow
-          icon={BellOff}
-          label="App Updates"
-          desc="News and feature announcements"
-          right={
-            <Toggle
-              id="notif-updates"
-              checked={notifUpdates}
-              onChange={e => setNotifUpdates(e.target.checked)}
-            />
-          }
-        />
-        <SettingRow
-          icon={Moon}
-          label="Dark Mode"
-          desc="Coming soon"
-          right={
-            <Toggle
-              id="dark-mode"
-              checked={darkMode}
-              onChange={e => setDarkMode(e.target.checked)}
-            />
-          }
-        />
-        {/* Privacy — link-style, no action */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            padding: '13px 0',
-            cursor: 'default',
+            padding: '16px 18px',
+            marginBottom: 12,
+            border: '1px solid rgba(249,115,22,0.3)',
           }}
         >
           <div
             style={{
-              width: 34,
-              height: 34,
-              borderRadius: 9,
-              background: 'var(--bg-page)',
-              border: '1px solid var(--border-color)',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-              color: 'var(--text-secondary)',
+              justifyContent: 'space-between',
+              marginBottom: 10,
             }}
           >
-            <Shield size={15} />
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-              Privacy & Data
+            <div
+              style={{
+                fontSize: '0.72rem',
+                fontWeight: 700,
+                color: 'var(--accent-color)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.08em',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              <Sliders size={13} />
+              Admin Switching Options (Exclusive)
             </div>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 1 }}>
-              Your data stays on your device
-            </div>
+            <span
+              style={{
+                fontSize: '0.62rem',
+                padding: '2px 6px',
+                borderRadius: 4,
+                background: 'rgba(249,115,22,0.1)',
+                color: 'var(--accent-color)',
+                fontWeight: 600,
+              }}
+            >
+              SUPERUSER ONLY
+            </span>
           </div>
-          <ChevronRight size={15} style={{ color: 'var(--text-muted)' }} />
-        </div>
-      </div>
 
-      {/* ── Danger zone ───────────────────────────────────── */}
+          {/* 1. Image Optimizer Mode Switch (Direct solution to KB resize question) */}
+          <SettingRow
+            icon={Zap}
+            label="Image Optimizer: 1MP Ultra-Saver"
+            badge={adminSettings.imageOptimizationMode === 'saver' ? '1MP Active' : '1920px Full HD'}
+            desc={
+              adminSettings.imageOptimizationMode === 'saver'
+                ? 'Compresses photos to ~1MP (~50KB-80KB WebP) to save Supabase free tier storage'
+                : 'Compresses photos to 1920px Full HD (~100KB-160KB WebP)'
+            }
+            right={
+              <Toggle
+                id="toggle-image-saver"
+                checked={adminSettings.imageOptimizationMode === 'saver'}
+                onChange={e =>
+                  updateSetting('imageOptimizationMode', e.target.checked ? 'saver' : 'standard')
+                }
+              />
+            }
+          />
+
+          {/* 2. Service Reminders Switch */}
+          <SettingRow
+            icon={Bell}
+            label="Service Reminders"
+            desc="Global background reminder notifications"
+            right={
+              <Toggle
+                id="notif-service"
+                checked={adminSettings.notifService}
+                onChange={e => updateSetting('notifService', e.target.checked)}
+              />
+            }
+          />
+
+          {/* 3. Overdue Alerts Switch */}
+          <SettingRow
+            icon={AlertTriangle}
+            label="Overdue Alerts"
+            desc="Broadcast urgent alerts when service is overdue"
+            right={
+              <Toggle
+                id="notif-overdue"
+                checked={adminSettings.notifOverdue}
+                onChange={e => updateSetting('notifOverdue', e.target.checked)}
+              />
+            }
+          />
+
+          {/* 4. App Updates Switch */}
+          <SettingRow
+            icon={BellOff}
+            label="App Updates & Broadcasts"
+            desc="Notify garage members about new app versions"
+            right={
+              <Toggle
+                id="notif-updates"
+                checked={adminSettings.notifUpdates}
+                onChange={e => updateSetting('notifUpdates', e.target.checked)}
+              />
+            }
+          />
+
+          {/* 5. Dark Mode Switch */}
+          <SettingRow
+            icon={Moon}
+            label="Dark Mode"
+            desc="Toggle UI theme mode preference"
+            right={
+              <Toggle
+                id="dark-mode"
+                checked={adminSettings.darkMode}
+                onChange={e => updateSetting('darkMode', e.target.checked)}
+              />
+            }
+          />
+
+          {/* 6. System Maintenance Mode Switch */}
+          <SettingRow
+            icon={Database}
+            label="Maintenance / Read-Only Mode"
+            badge={adminSettings.maintenanceMode ? 'ACTIVE' : null}
+            desc="Lock vehicle edits during database migrations"
+            right={
+              <Toggle
+                id="system-maintenance"
+                checked={adminSettings.maintenanceMode}
+                onChange={e => updateSetting('maintenanceMode', e.target.checked)}
+              />
+            }
+          />
+
+          {/* Deactivate Admin Mode button */}
+          <div style={{ paddingTop: 14, textAlign: 'right' }}>
+            <button
+              onClick={handleDeactivateAdmin}
+              style={{
+                background: 'none',
+                border: '1px solid var(--border-color)',
+                borderRadius: 8,
+                padding: '6px 12px',
+                color: 'var(--text-secondary)',
+                fontSize: '0.75rem',
+                cursor: 'pointer',
+              }}
+            >
+              Exit Admin Mode
+            </button>
+          </div>
+        </div>
+      ) : (
+        /* Regular User View: Switching options are hidden! */
+        <div
+          className="garage-card"
+          style={{
+            padding: '14px 18px',
+            marginBottom: 12,
+            background: 'rgba(255,255,255,0.02)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Shield size={18} color="var(--text-muted)" />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                System Settings Managed by Admin
+              </div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                System-wide switches and storage rules are configured by the project administrator.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Danger & Auth Zone ───────────────────────────── */}
       <div className="garage-card" style={{ padding: '14px 18px', marginBottom: 24 }}>
         {/* Sign out */}
         <button
@@ -529,52 +722,114 @@ export default function Profile() {
           </span>
         </button>
 
-        {/* Delete account — visual only */}
-        <button
-          onClick={() => alert('Account deletion will be available in a future update.')}
-          style={{
-            width: '100%',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            padding: '10px 0 0',
-            textAlign: 'left',
-            fontFamily: 'inherit',
-          }}
-        >
-          <div
-            style={{
-              width: 34,
-              height: 34,
-              borderRadius: 9,
-              background: 'rgba(239,68,68,0.06)',
-              border: '1px solid rgba(239,68,68,0.15)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: 'var(--danger-color)',
-            }}
-          >
-            <Trash2 size={15} />
+        {/* Admin Unlock Modal / Row */}
+        {!isAdmin && (
+          <div style={{ paddingTop: 10 }}>
+            {!showAdminLogin ? (
+              <button
+                onClick={() => setShowAdminLogin(true)}
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: '4px 0',
+                  textAlign: 'left',
+                  fontFamily: 'inherit',
+                }}
+              >
+                <div
+                  style={{
+                    width: 34,
+                    height: 34,
+                    borderRadius: 9,
+                    background: 'var(--bg-page)',
+                    border: '1px solid var(--border-color)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'var(--text-muted)',
+                  }}
+                >
+                  <Key size={15} />
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                    Unlock Admin Profile
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                    Enter credentials or PIN to access admin switching options
+                  </div>
+                </div>
+              </button>
+            ) : (
+              <form onSubmit={handleAdminAuthSubmit} style={{ paddingTop: 6 }}>
+                <div style={{ fontSize: '0.78rem', fontWeight: 600, marginBottom: 6, color: 'var(--text-primary)' }}>
+                  Enter Admin Credential or PIN:
+                </div>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                  <input
+                    type="password"
+                    placeholder="Admin PIN (e.g. admin2026 or email)"
+                    value={adminCredInput}
+                    onChange={e => setAdminCredInput(e.target.value)}
+                    autoFocus
+                    style={{
+                      flex: 1,
+                      padding: '8px 12px',
+                      borderRadius: 8,
+                      border: '1px solid var(--border-color)',
+                      background: 'var(--bg-input)',
+                      color: 'var(--text-primary)',
+                      fontSize: '0.85rem',
+                      outline: 'none',
+                    }}
+                  />
+                  <button
+                    type="submit"
+                    className="btn-orange"
+                    style={{ padding: '8px 14px', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
+                  >
+                    Unlock
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setShowAdminLogin(false); setAdminError(''); }}
+                    style={{
+                      background: 'var(--bg-page)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: 8,
+                      padding: '8px 10px',
+                      color: 'var(--text-secondary)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+                {adminError && (
+                  <div style={{ fontSize: '0.75rem', color: 'var(--danger-color)', marginBottom: 6 }}>
+                    {adminError}
+                  </div>
+                )}
+                {adminSuccess && (
+                  <div style={{ fontSize: '0.75rem', color: 'var(--success-color)', marginBottom: 6 }}>
+                    {adminSuccess}
+                  </div>
+                )}
+              </form>
+            )}
           </div>
-          <div>
-            <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--danger-color)' }}>
-              Delete Account
-            </div>
-            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-              Permanently remove your data
-            </div>
-          </div>
-        </button>
+        )}
       </div>
 
       {/* Tiny version tag */}
       <div style={{ textAlign: 'center', marginBottom: 32 }}>
         <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', letterSpacing: '0.04em' }}>
-          NGINEBREAK · MVP v0.1.0
+          NGINEBREAK · {isAdmin ? 'ADMIN CONSOLE ACTIVE' : 'MVP v0.1.0'}
         </span>
       </div>
     </div>

@@ -1,10 +1,23 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useGarage } from "../context/GarageContext";
 import SwipeableVehicleCard from "../components/SwipeableVehicleCard";
 import {
+  isUserAdmin,
+  getAdminSettings,
+  saveAdminSettings,
+} from "../utils/adminAuth";
+import { isSupabaseConfigured } from "../services/supabaseClient";
+import {
   Plus,
   LogOut,
+  Shield,
+  Zap,
+  Download,
+  Sliders,
+  Database,
+  CheckCircle2,
+  AlertCircle,
 } from "lucide-react";
 
 // ── Coming Soon chip ────────────────────────────────────────
@@ -26,9 +39,52 @@ function ComingSoonChip({ label, icon }) {
 export default function GarageDashboard() {
   const { vehicles, user, currentUser, loading, logout } = useGarage();
 
+  const [isAdmin, setIsAdmin] = useState(() => isUserAdmin(currentUser));
+  const [adminSettings, setAdminSettings] = useState(() => getAdminSettings());
+  const [backupExported, setBackupExported] = useState(false);
+
+  useEffect(() => {
+    setIsAdmin(isUserAdmin(currentUser));
+    const handleSync = () => {
+      setIsAdmin(isUserAdmin(currentUser));
+      setAdminSettings(getAdminSettings());
+    };
+    window.addEventListener("admin_state_changed", handleSync);
+    window.addEventListener("admin_settings_changed", handleSync);
+    return () => {
+      window.removeEventListener("admin_state_changed", handleSync);
+      window.removeEventListener("admin_settings_changed", handleSync);
+    };
+  }, [currentUser]);
+
   const sharedVehiclesCount = (vehicles || []).filter(
     (v) => v.user_id && currentUser?.id && v.user_id !== currentUser.id
   ).length;
+
+  const toggleImageSaver = () => {
+    const next = adminSettings.imageOptimizationMode === "saver" ? "standard" : "saver";
+    const updated = saveAdminSettings({ imageOptimizationMode: next });
+    setAdminSettings(updated);
+  };
+
+  const handleExportBackup = () => {
+    const payload = {
+      project: "Nginebreak Garage Fleet Backup",
+      exported_at: new Date().toISOString(),
+      fleet_count: vehicles.length,
+      vehicles,
+      admin_settings: adminSettings,
+    };
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(payload, null, 2));
+    const downloadAnchor = document.createElement("a");
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("download", `nginebreak_backup_${Date.now()}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+    setBackupExported(true);
+    setTimeout(() => setBackupExported(false), 3000);
+  };
 
   if (loading)
     return (
@@ -44,6 +100,8 @@ export default function GarageDashboard() {
       </div>
     );
 
+  const isSaver = adminSettings.imageOptimizationMode === "saver";
+
   return (
     <div className="app-container" style={{ paddingTop: 0 }}>
       {/* ── Top bar ─────────────────────────────── */}
@@ -57,9 +115,26 @@ export default function GarageDashboard() {
               letterSpacing: "0.06em",
               textTransform: "uppercase",
               marginBottom: 2,
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
             }}
           >
-            My Garage
+            <span>My Garage</span>
+            {isAdmin && (
+              <span
+                style={{
+                  fontSize: "0.62rem",
+                  padding: "1px 6px",
+                  borderRadius: 4,
+                  background: "rgba(249,115,22,0.15)",
+                  color: "var(--accent-color)",
+                  fontWeight: 700,
+                }}
+              >
+                ADMIN
+              </span>
+            )}
           </div>
           <h1
             style={{
@@ -74,7 +149,7 @@ export default function GarageDashboard() {
           </h1>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div className="avatar">{user?.name?.[0]?.toUpperCase() || "G"}</div>
+          <div className="avatar">{isAdmin ? "A" : (user?.name?.[0]?.toUpperCase() || "G")}</div>
           <button
             title="Sign out"
             onClick={logout}
@@ -92,6 +167,165 @@ export default function GarageDashboard() {
           </button>
         </div>
       </div>
+
+      {/* ── ADMIN COMMAND CENTER (Visible only to Admin) ── */}
+      {isAdmin && (
+        <div
+          style={{
+            background: "linear-gradient(135deg, rgba(249,115,22,0.08) 0%, rgba(245,158,11,0.04) 100%)",
+            border: "1px solid rgba(249,115,22,0.3)",
+            borderRadius: 14,
+            padding: "14px 16px",
+            marginBottom: 16,
+          }}
+        >
+          {/* Header */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <Shield size={16} color="var(--accent-color)" />
+              <span style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--text-primary)", letterSpacing: "0.02em" }}>
+                Admin Command Center
+              </span>
+            </div>
+            <Link
+              to="/profile"
+              style={{
+                fontSize: "0.72rem",
+                fontWeight: 600,
+                color: "var(--accent-color)",
+                textDecoration: "none",
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+              }}
+            >
+              <Sliders size={12} /> Full Settings
+            </Link>
+          </div>
+
+          {/* Quick Metrics */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(3, 1fr)",
+              gap: 8,
+              marginBottom: 12,
+            }}
+          >
+            <div
+              style={{
+                background: "var(--bg-card)",
+                padding: "8px 10px",
+                borderRadius: 8,
+                border: "1px solid var(--border-color)",
+              }}
+            >
+              <div style={{ fontSize: "0.62rem", color: "var(--text-muted)", textTransform: "uppercase" }}>
+                Fleet Count
+              </div>
+              <div style={{ fontSize: "0.95rem", fontWeight: 800, color: "var(--text-primary)" }}>
+                {vehicles.length} Vehicles
+              </div>
+            </div>
+
+            <div
+              style={{
+                background: "var(--bg-card)",
+                padding: "8px 10px",
+                borderRadius: 8,
+                border: "1px solid var(--border-color)",
+              }}
+            >
+              <div style={{ fontSize: "0.62rem", color: "var(--text-muted)", textTransform: "uppercase" }}>
+                Supabase Sync
+              </div>
+              <div
+                style={{
+                  fontSize: "0.85rem",
+                  fontWeight: 700,
+                  color: isSupabaseConfigured() ? "var(--success-color)" : "var(--accent-color)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+              >
+                {isSupabaseConfigured() ? "Connected" : "Local Mode"}
+              </div>
+            </div>
+
+            <div
+              style={{
+                background: "var(--bg-card)",
+                padding: "8px 10px",
+                borderRadius: 8,
+                border: "1px solid var(--border-color)",
+              }}
+            >
+              <div style={{ fontSize: "0.62rem", color: "var(--text-muted)", textTransform: "uppercase" }}>
+                Storage Mode
+              </div>
+              <div
+                style={{
+                  fontSize: "0.85rem",
+                  fontWeight: 700,
+                  color: isSaver ? "var(--accent-color)" : "var(--text-secondary)",
+                }}
+              >
+                {isSaver ? "1MP Saver" : "1920px HD"}
+              </div>
+            </div>
+          </div>
+
+          {/* Action buttons */}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button
+              onClick={toggleImageSaver}
+              style={{
+                flex: 1,
+                minWidth: "140px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6,
+                padding: "7px 10px",
+                borderRadius: 8,
+                background: isSaver ? "rgba(249,115,22,0.15)" : "var(--bg-page)",
+                border: isSaver ? "1px solid var(--accent-color)" : "1px solid var(--border-color)",
+                color: isSaver ? "var(--accent-color)" : "var(--text-secondary)",
+                fontSize: "0.74rem",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              <Zap size={13} />
+              {isSaver ? "1MP Saver Active (~60KB)" : "Switch to 1MP Saver"}
+            </button>
+
+            <button
+              onClick={handleExportBackup}
+              style={{
+                flex: 1,
+                minWidth: "140px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6,
+                padding: "7px 10px",
+                borderRadius: 8,
+                background: "var(--bg-page)",
+                border: "1px solid var(--border-color)",
+                color: "var(--text-secondary)",
+                fontSize: "0.74rem",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              <Download size={13} />
+              {backupExported ? "Backup Exported!" : "Export Fleet JSON"}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── Empty state ─────────────────────────── */}
       {vehicles.length === 0 ? (

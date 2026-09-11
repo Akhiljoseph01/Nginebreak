@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useGarage } from "../context/GarageContext";
 import MaintenanceCard from "../components/MaintenanceCard";
@@ -9,11 +9,8 @@ import {
   Gauge,
   UploadCloud,
   Trash2,
-  Sparkles,
-  CheckCircle2,
   Users,
   UserPlus,
-  Crown,
   Clock,
   AlertTriangle,
   Mail,

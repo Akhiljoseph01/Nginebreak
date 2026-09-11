@@ -1,13 +1,18 @@
 import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
+import { getAdminSettings } from './adminAuth';
 
 /**
  * Optimizes an image client-side without visible loss of quality:
- * 1. Resizes to max 1920px (Full HD/2K crispness - looks razor-sharp on Retina/mobile).
- * 2. Uses high-quality canvas bicubic interpolation.
- * 3. Encodes to WebP at 0.88 quality (visually lossless, drops raw metadata & noise).
- * 4. Reduces 4MB-8MB camera files to ~90KB-160KB (up to 97% storage saved!).
+ * - Saver mode: 1280px (~1MP, 50-80KB) for maximum storage savings on Supabase.
+ * - Standard mode: 1920px (Full HD, 90-160KB) for 2K display crispness.
  */
-export async function optimizeImage(file, { maxDimension = 1920, quality = 0.88 } = {}) {
+export async function optimizeImage(file, options = {}) {
+  const adminSettings = getAdminSettings();
+  const isSaver = adminSettings.imageOptimizationMode !== 'standard';
+
+  const maxDimension = options.maxDimension ?? (isSaver ? 1280 : 1920);
+  const quality = options.quality ?? (isSaver ? 0.82 : 0.88);
+
   return new Promise((resolve, reject) => {
     // If SVG, no compression needed
     if (file.type === 'image/svg+xml') {
