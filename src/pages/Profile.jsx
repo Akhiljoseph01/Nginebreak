@@ -735,6 +735,21 @@ export default function Profile() {
             }
           />
 
+          {/* 7. Beta & Staging Feature Flag Switch */}
+          <SettingRow
+            icon={Cpu}
+            label="Beta & Staging Feature Flag"
+            badge={adminSettings.betaTestingMode ? 'BETA ACTIVE' : null}
+            desc="Unlock experimental features for Admin & internal testers"
+            right={
+              <Toggle
+                id="beta-testing"
+                checked={adminSettings.betaTestingMode}
+                onChange={e => updateSetting('betaTestingMode', e.target.checked)}
+              />
+            }
+          />
+
           {/* Deactivate Admin Mode button */}
           <div style={{ paddingTop: 14, textAlign: 'right' }}>
             <button

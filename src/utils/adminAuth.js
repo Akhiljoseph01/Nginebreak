@@ -17,9 +17,10 @@ export const DEFAULT_ADMIN_SETTINGS = {
   notifService: true,
   notifOverdue: true,
   notifUpdates: false,
-  // System feature flags
+  // System feature flags & Beta Testing Mode
   darkMode: false,
   maintenanceMode: false,
+  betaTestingMode: false, // 🧪 Admin & Tester Preview Mode
   allowGuestMode: true,
   debugLogs: false,
 };
