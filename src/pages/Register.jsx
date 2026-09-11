@@ -1,4 +1,4 @@
-﻿import React, { useState } from "react";
+import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useGarage } from "../context/GarageContext";
 import { UserPlus, Mail, Lock, User, AlertCircle, CheckCircle, Info, ExternalLink } from "lucide-react";
@@ -92,17 +92,20 @@ export default function Register() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="auth-form">
+          <form onSubmit={handleSubmit} className="auth-form" autoComplete="on">
             <div className="auth-field">
               <label className="auth-label">Display Name</label>
               <div className="auth-input-wrap">
                 <User size={16} className="auth-input-icon" />
                 <input
                   type="text"
+                  name="name"
+                  id="reg-name"
                   className="auth-input"
                   placeholder="e.g. Arjun"
                   value={form.name}
                   onChange={(e) => set("name", e.target.value)}
+                  autoComplete="name"
                   required
                   autoFocus
                 />
@@ -115,10 +118,13 @@ export default function Register() {
                 <Mail size={16} className="auth-input-icon" />
                 <input
                   type="email"
+                  name="email"
+                  id="reg-email"
                   className="auth-input"
                   placeholder="you@example.com"
                   value={form.email}
                   onChange={(e) => set("email", e.target.value)}
+                  autoComplete="email"
                   required
                 />
               </div>
@@ -130,10 +136,13 @@ export default function Register() {
                 <Lock size={16} className="auth-input-icon" />
                 <input
                   type="password"
+                  name="password"
+                  id="reg-password"
                   className="auth-input"
                   placeholder="Min. 6 characters"
                   value={form.password}
                   onChange={(e) => set("password", e.target.value)}
+                  autoComplete="new-password"
                   required
                 />
               </div>
@@ -145,10 +154,13 @@ export default function Register() {
                 <Lock size={16} className="auth-input-icon" />
                 <input
                   type="password"
+                  name="confirmPassword"
+                  id="reg-confirm-password"
                   className="auth-input"
                   placeholder="Repeat password"
                   value={form.confirm}
                   onChange={(e) => set("confirm", e.target.value)}
+                  autoComplete="new-password"
                   required
                 />
               </div>

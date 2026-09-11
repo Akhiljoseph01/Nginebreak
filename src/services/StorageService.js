@@ -124,23 +124,17 @@ class StorageService {
 
     let localData = await localforage.getItem(storageKey);
     if (!localData) {
-      // Check legacy "garage_data" key for existing data migration
-      const legacyData = await localforage.getItem("garage_data");
-      if (legacyData?.vehicles?.length > 0) {
-        localData = legacyData;
-      } else {
-        localData = {
-          user: {
-            name: authUser?.display_name || "Enthusiast",
-            id: authUser?.id,
-          },
-          vehicles: [],
-        };
-      }
+      localData = {
+        user: {
+          name: authUser?.display_name || "Enthusiast",
+          id: authUser?.id || null,
+        },
+        vehicles: [],
+      };
       await localforage.setItem(storageKey, localData);
     }
 
-    // Guest / unauthenticated mode — use local storage directly
+    // Guest / unauthenticated mode — use local guest storage directly
     if (!isSupabaseConfigured() || !supabase || !authUser) {
       return localData || DEFAULT_DATA;
     }
@@ -337,7 +331,6 @@ class StorageService {
       };
 
       await localforage.setItem(storageKey, cloudData);
-      await localforage.setItem("garage_data", cloudData);
       return cloudData;
     } catch (err) {
       console.warn(
@@ -352,7 +345,27 @@ class StorageService {
     const authUser = await getCurrentAuthUser();
     const storageKey = getStorageKey(authUser?.id);
     await localforage.setItem(storageKey, data);
-    await localforage.setItem("garage_data", data);
+  }
+
+  // ==========================================
+  // Clear all cached and local storage data for session privacy
+  // ==========================================
+  async clearSessionData() {
+    try {
+      const authUser = await getCurrentAuthUser();
+      if (authUser?.id) {
+        await localforage.removeItem(`garage_data_${authUser.id}`);
+        localStorage.removeItem(`nginebreak_profile_${authUser.id}`);
+      }
+      await localforage.removeItem("garage_data");
+      await localforage.removeItem("garage_data_guest");
+      localStorage.removeItem("nginebreak_profile_guest");
+      localStorage.removeItem("nginebreak_admin_mode");
+      localStorage.removeItem("nginebreak_admin_view_mode");
+      sessionStorage.clear();
+    } catch (err) {
+      console.warn("[StorageService] Clear session warning:", err);
+    }
   }
 
   // ==========================================
@@ -379,7 +392,9 @@ class StorageService {
     }
 
     try {
-      localStorage.setItem(`nginebreak_profile_${authUser?.id || "guest"}`, JSON.stringify(data.user));
+      if (authUser?.id) {
+        localStorage.setItem(`nginebreak_profile_${authUser.id}`, JSON.stringify(data.user));
+      }
     } catch (_) {}
 
     await this.saveData(data);

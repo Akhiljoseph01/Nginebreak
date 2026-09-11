@@ -218,17 +218,20 @@ export default function Login() {
                 </div>
               )}
 
-              <form onSubmit={handleSubmit} className="auth-form-body">
+              <form onSubmit={handleSubmit} className="auth-form-body" autoComplete="on">
                 {/* Email Address */}
                 <div className="input-field-group">
                   <Mail size={17} className="input-lead-icon" />
                   <input
                     type="email"
+                    name="email"
+                    id="login-email"
                     className="input-text-ctrl"
                     placeholder="Email address"
                     value={form.email}
                     onChange={(e) => set("email", e.target.value)}
                     required
+                    autoComplete="username"
                     autoFocus
                   />
                 </div>
@@ -238,11 +241,14 @@ export default function Login() {
                   <Lock size={17} className="input-lead-icon" />
                   <input
                     type={showPassword ? "text" : "password"}
+                    name="password"
+                    id="login-password"
                     className="input-text-ctrl"
                     placeholder="Password"
                     value={form.password}
                     onChange={(e) => set("password", e.target.value)}
                     required
+                    autoComplete="current-password"
                   />
                   <button
                     type="button"

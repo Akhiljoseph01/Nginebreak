@@ -82,13 +82,14 @@ export function GarageProvider({ children }) {
 
     // Listen for future auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
+      async (event, session) => {
         dispatch({ type: "SET_AUTH", user: session?.user ?? null });
         if (session?.user) {
           ensureProfile(session.user);
           loadData();
         } else {
-          // Logged out: reset in-memory state cleanly without overwriting local cache
+          // User signed out: purge session cache for privacy
+          await StorageService.clearSessionData();
           dispatch({
             type: "LOAD_DATA",
             data: { user: { name: "Enthusiast" }, vehicles: [] },
@@ -161,8 +162,20 @@ export function GarageProvider({ children }) {
   };
 
   const logout = async () => {
-    if (!supabase) return;
-    await supabase.auth.signOut();
+    try {
+      if (supabase) {
+        await supabase.auth.signOut();
+      }
+    } catch (e) {
+      console.warn("[GarageContext] Signout error:", e);
+    }
+    await StorageService.clearSessionData();
+    dispatch({ type: "SET_AUTH", user: null });
+    dispatch({
+      type: "LOAD_DATA",
+      data: { user: { name: "Enthusiast" }, vehicles: [] },
+    });
+    dispatch({ type: "SET_LOADING", value: false });
   };
 
   const addVehicle = async (params) => {
