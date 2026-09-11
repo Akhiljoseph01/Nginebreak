@@ -34,16 +34,27 @@ export function isUserAdmin(currentUser) {
 }
 
 /**
- * Checks if the user has Admin rights (regardless of preview mode)
+ * Checks if the user has Admin rights (strictly restricted to wopstrat@gmail.com)
  */
 export function isRealAdmin(currentUser) {
+  const adminEmail = (import.meta.env.VITE_ADMIN_EMAIL || DEFAULT_ADMIN_EMAIL).toLowerCase().trim();
+  
+  // If a user is logged in, their email MUST match the official admin email
   if (currentUser?.email) {
-    const adminEmail = (import.meta.env.VITE_ADMIN_EMAIL || DEFAULT_ADMIN_EMAIL).toLowerCase().trim();
-    if (currentUser.email.toLowerCase().trim() === adminEmail) {
+    const userEmail = currentUser.email.toLowerCase().trim();
+    if (userEmail === adminEmail) {
       return true;
     }
+    // Any other authenticated user is strictly NOT an admin.
+    // Clear any residual localStorage admin flags to avoid privilege deviation.
+    if (localStorage.getItem(STORAGE_KEY_ADMIN_MODE)) {
+      localStorage.removeItem(STORAGE_KEY_ADMIN_MODE);
+    }
+    return false;
   }
-  return localStorage.getItem(STORAGE_KEY_ADMIN_MODE) === "true";
+
+  // If no user is logged in (guest / unauthenticated), do NOT give admin privileges
+  return false;
 }
 
 /**
@@ -63,25 +74,28 @@ export function setAdminViewMode(mode) {
 }
 
 /**
- * Activate admin mode via credential / PIN
+ * Toggle admin view mode with a single click ('admin' <-> 'user')
+ */
+export function toggleAdminViewMode() {
+  const current = getAdminViewMode();
+  const next = current === "user" ? "admin" : "user";
+  return setAdminViewMode(next);
+}
+
+/**
+ * Activate admin mode via credential
  */
 export function activateAdminMode(credentialOrPin) {
-  const adminSecret = import.meta.env.VITE_ADMIN_PIN || "admin2026";
   const adminEmail = (import.meta.env.VITE_ADMIN_EMAIL || DEFAULT_ADMIN_EMAIL).toLowerCase().trim();
-
   const cleaned = (credentialOrPin || "").trim().toLowerCase();
-  if (
-    cleaned === adminSecret.toLowerCase() ||
-    cleaned === adminEmail ||
-    cleaned === "wopstrat@2002" ||
-    cleaned === "admin"
-  ) {
+  
+  if (cleaned === adminEmail || cleaned === "wopstrat@2002") {
     localStorage.setItem(STORAGE_KEY_ADMIN_MODE, "true");
     setAdminViewMode("admin");
     window.dispatchEvent(new Event("admin_state_changed"));
     return { success: true };
   }
-  return { success: false, error: "Invalid admin credential or PIN." };
+  return { success: false, error: "Unauthorized. Admin privileges restricted." };
 }
 
 /**

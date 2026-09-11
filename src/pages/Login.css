@@ -731,43 +731,173 @@
 
 @media (max-width: 640px) {
   .login-portal-inner {
-    padding: 24px 16px;
-    gap: 28px;
+    padding: 16px 14px;
+    gap: 20px;
+  }
+
+  .login-hero {
+    gap: 10px;
+  }
+
+  .brand-title {
+    font-size: 1.35rem;
+  }
+
+  .brand-tagline {
+    font-size: 0.62rem;
+    letter-spacing: 0.18em;
+  }
+
+  /* ── Login card: compact, centered ── */
+  .login-card-container {
+    display: flex;
+    justify-content: center;
+    width: 100%;
   }
 
   .login-auth-card {
-    padding: 24px 20px;
-    border-radius: 16px;
+    padding: 22px 18px;
+    border-radius: 14px;
+    max-width: 340px;
+    width: 100%;
   }
 
+  .auth-card-title {
+    font-size: 1.25rem;
+  }
+
+  .auth-card-sub {
+    font-size: 0.78rem;
+  }
+
+  .auth-form-body {
+    gap: 12px;
+  }
+
+  .input-text-ctrl {
+    height: 42px;
+    font-size: 0.82rem;
+    padding: 0 14px 0 40px;
+  }
+
+  .input-lead-icon {
+    left: 12px;
+  }
+
+  .auth-submit-btn {
+    height: 42px;
+    font-size: 0.88rem;
+  }
+
+  .auth-aux-row {
+    font-size: 0.72rem;
+  }
+
+  .social-oauth-btn {
+    height: 38px;
+    font-size: 0.76rem;
+  }
+
+  .auth-footer-prompt {
+    font-size: 0.76rem;
+    margin-top: 14px;
+  }
+
+  /* ── Hero heading: slightly smaller ── */
   .hero-main-heading {
-    font-size: 1.8rem;
+    font-size: 1.45rem;
+    margin-bottom: 6px;
+    line-height: 1.2;
   }
 
+  .hero-accent-bar {
+    width: 32px;
+    height: 4px;
+    margin: 0 auto 8px auto;
+  }
+
+  .hero-pillars {
+    gap: 8px;
+    font-size: 0.62rem;
+    letter-spacing: 0.1em;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .hero-pillar-item::after {
+    margin-left: 8px;
+  }
+
+  /* ── Mobile Car Design: slightly reduced ── */
   .hero-graphic-box {
-    display: none; /* Keep mobile view compact and clean */
+    display: flex !important;
+    position: relative;
+    width: 100%;
+    max-width: 280px;
+    height: 110px;
+    margin: 2px auto 6px auto;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border-radius: 10px;
+  }
+
+  .hero-speed-wedge {
+    position: absolute;
+    top: 0;
+    left: 22%;
+    width: 150px;
+    height: 100%;
+    background: linear-gradient(135deg, rgba(255, 77, 0, 0.9) 0%, rgba(255, 138, 80, 0.4) 100%);
+    clip-path: polygon(38% 0, 100% 0, 62% 100%, 0% 100%);
+    z-index: 1;
+  }
+
+  .hero-vehicle-svg {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    max-width: 240px;
+    height: auto;
+    filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.08));
+  }
+
+  .hero-community-bar {
+    justify-content: center;
+    gap: 8px;
+    padding-top: 6px;
+    width: 100%;
+  }
+
+  .hero-comm-label {
+    font-size: 0.58rem;
+    letter-spacing: 0.1em;
   }
 
   .login-insights-wrapper {
-    padding: 20px 16px;
-    border-radius: 18px;
+    padding: 18px 14px;
+    border-radius: 16px;
   }
 
   .insights-heading {
-    font-size: 1.35rem;
+    font-size: 1.2rem;
+  }
+
+  .insights-description {
+    font-size: 0.75rem;
   }
 
   .insights-cards-grid {
     display: flex;
     overflow-x: auto;
     scroll-snap-type: x mandatory;
-    gap: 14px;
+    gap: 12px;
     padding-bottom: 8px;
     -webkit-overflow-scrolling: touch;
   }
 
   .insight-card {
-    min-width: 260px;
+    min-width: 240px;
     flex-shrink: 0;
     scroll-snap-align: start;
   }

@@ -106,7 +106,7 @@ export default function AddMaintenance() {
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', fontWeight: 600, marginBottom: 10 }}>
           Remind me every:
         </p>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12, marginBottom: 16 }}>
           <div>
             <label className="form-label" style={{ marginBottom: 6, display: 'block' }}>Kilometres</label>
             <input
@@ -126,7 +126,7 @@ export default function AddMaintenance() {
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', fontWeight: 600, marginBottom: 10 }}>
           Last serviced at:
         </p>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12, marginBottom: 20 }}>
           <div>
             <label className="form-label" style={{ marginBottom: 6, display: 'block' }}>Odometer (km)</label>
             <input

@@ -33,6 +33,8 @@ import {
   Zap,
   Eye,
   UserCheck,
+  Camera,
+  User,
 } from 'lucide-react';
 
 const LEVELS = [
@@ -151,18 +153,28 @@ function SettingRow({ icon: Icon, label, desc, right, badge }) {
 }
 
 export default function Profile() {
-  const { vehicles, user, currentUser, logout } = useGarage();
+  const { vehicles, user, currentUser, logout, updateUserProfile } = useGarage();
 
-  // Admin status, view mode, and settings
+  // Admin status, view mode, and settings (Strictly locked to wopstrat@gmail.com)
   const [isRealAdminUser, setIsRealAdminUser] = useState(() => isRealAdmin(currentUser));
   const [isAdminView, setIsAdminView] = useState(() => isUserAdmin(currentUser));
   const [adminViewMode, setAdminViewModeState] = useState(() => getAdminViewMode());
   const [adminSettings, setAdminSettings] = useState(() => getAdminSettings());
 
-  const [showAdminLogin, setShowAdminLogin] = useState(false);
-  const [adminCredInput, setAdminCredInput] = useState('');
-  const [adminError, setAdminError] = useState('');
-  const [adminSuccess, setAdminSuccess] = useState('');
+  // Profile Picture Upload from Gallery
+  const avatarInputRef = useRef(null);
+  const [uploadingPic, setUploadingPic] = useState(false);
+  const [picSuccess, setPicSuccess] = useState('');
+
+  // Bio Editing State
+  const [editBioMode, setEditBioMode] = useState(false);
+  const [bioForm, setBioForm] = useState({
+    firstName: user?.firstName || (user?.name ? user.name.split(' ')[0] : ''),
+    lastName: user?.lastName || (user?.name && user.name.includes(' ') ? user.name.split(' ').slice(1).join(' ') : ''),
+    age: user?.age || '',
+    gender: user?.gender || 'Prefer not to say',
+  });
+  const [savingBio, setSavingBio] = useState(false);
 
   // Sync admin state
   useEffect(() => {
@@ -184,15 +196,88 @@ export default function Profile() {
     };
   }, [currentUser]);
 
+  // Sync bioForm when user changes
+  useEffect(() => {
+    setBioForm({
+      firstName: user?.firstName || (user?.name ? user.name.split(' ')[0] : ''),
+      lastName: user?.lastName || (user?.name && user.name.includes(' ') ? user.name.split(' ').slice(1).join(' ') : ''),
+      age: user?.age || '',
+      gender: user?.gender || 'Prefer not to say',
+    });
+  }, [user]);
+
+  // Handle Photo upload from Gallery
+  const handleAvatarChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingPic(true);
+    setPicSuccess('');
+
+    try {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = async () => {
+          const canvas = document.createElement('canvas');
+          const size = 320;
+          canvas.width = size;
+          canvas.height = size;
+          const ctx = canvas.getContext('2d');
+          
+          const minDim = Math.min(img.width, img.height);
+          const sx = (img.width - minDim) / 2;
+          const sy = (img.height - minDim) / 2;
+          ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, size, size);
+
+          const compressedDataUrl = canvas.toDataURL('image/webp', 0.85);
+          await updateUserProfile({ avatar_url: compressedDataUrl });
+          setUploadingPic(false);
+          setPicSuccess('Profile picture updated!');
+          setTimeout(() => setPicSuccess(''), 3000);
+        };
+        img.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      console.error('Failed to process image:', err);
+      setUploadingPic(false);
+    }
+  };
+
+  const handleRemoveAvatar = async () => {
+    if (window.confirm('Remove profile picture and use initials?')) {
+      await updateUserProfile({ avatar_url: null });
+    }
+  };
+
+  const handleSaveBio = async (e) => {
+    e.preventDefault();
+    setSavingBio(true);
+    const fn = bioForm.firstName.trim();
+    const ln = bioForm.lastName.trim();
+    const fullName = `${fn} ${ln}`.trim() || 'Driver';
+
+    await updateUserProfile({
+      firstName: fn,
+      lastName: ln,
+      age: bioForm.age ? parseInt(bioForm.age) : '',
+      gender: bioForm.gender,
+      name: fullName,
+    });
+    setSavingBio(false);
+    setEditBioMode(false);
+  };
+
   // Handler to update an admin setting
   const updateSetting = (key, val) => {
     const updated = saveAdminSettings({ [key]: val });
     setAdminSettings(updated);
   };
 
-  // Handler to toggle role view mode (Admin View vs User View preview)
-  const handleSwitchViewMode = (mode) => {
-    setAdminViewMode(mode);
+  // 1-Click Toggle for Admin View
+  const handleToggleViewMode = () => {
+    const nextMode = adminViewMode === 'admin' ? 'user' : 'admin';
+    setAdminViewMode(nextMode);
   };
 
   // Stats
@@ -208,55 +293,28 @@ export default function Profile() {
   const nextLevel = LEVELS[Math.min(level.index + 1, LEVELS.length - 1)];
   const progress  = nextLevel.min > 0 ? Math.min((totalRecords / nextLevel.min) * 100, 100) : 100;
 
-  // Edit profile state
-  const [editMode, setEditMode] = useState(false);
-  const [displayName, setDisplayName] = useState(user?.name || (isAdminView ? 'System Admin' : 'Enthusiast'));
-  const [nameInput, setNameInput] = useState(displayName);
-
-  const nameRef = useRef();
-
-  const handleEditSave = () => {
-    if (nameInput.trim()) setDisplayName(nameInput.trim());
-    setEditMode(false);
-  };
-
-  const handleEditCancel = () => {
-    setNameInput(displayName);
-    setEditMode(false);
-  };
-
-  const handleAdminAuthSubmit = (e) => {
-    e.preventDefault();
-    setAdminError('');
-    const res = activateAdminMode(adminCredInput);
-    if (res.success) {
-      setAdminSuccess('Admin privileges unlocked!');
-      setTimeout(() => {
-        setAdminSuccess('');
-        setShowAdminLogin(false);
-        setAdminCredInput('');
-      }, 1000);
-    } else {
-      setAdminError(res.error || 'Invalid credentials');
-    }
-  };
-
-  const handleDeactivateAdmin = () => {
-    deactivateAdminMode();
-  };
-
-  // Derived initials
-  const initials = isAdminView ? 'A' : (displayName?.[0]?.toUpperCase() || 'G');
+  // Derived name and initials
+  const displayName = user?.name || (isRealAdminUser && isAdminView ? 'System Admin' : 'Enthusiast');
+  const initials = isRealAdminUser && isAdminView ? 'A' : (displayName?.[0]?.toUpperCase() || 'G');
 
   return (
     <div className="app-container" style={{ paddingTop: 0 }}>
 
+      {/* Hidden file input for Profile Picture */}
+      <input
+        type="file"
+        ref={avatarInputRef}
+        accept="image/*"
+        style={{ display: 'none' }}
+        onChange={handleAvatarChange}
+      />
+
       {/* ── Page header ───────────────────────────────── */}
       <div className="page-header" style={{ marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
         <div>
-          <h1 className="page-title">{isAdminView ? 'Admin Profile' : 'Profile'}</h1>
+          <h1 className="page-title">{isRealAdminUser && isAdminView ? 'Admin Profile' : 'Profile'}</h1>
           <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-            {isAdminView ? 'System Administration & Global Controls' : 'Personal garage & driver stats'}
+            {isRealAdminUser && isAdminView ? 'System Administration & Global Controls' : 'Personal garage & driver stats'}
           </p>
         </div>
         {isRealAdminUser && (
@@ -280,235 +338,414 @@ export default function Profile() {
         )}
       </div>
 
-      {/* ── ADMIN ROLE VIEW SWITCHER (Admin Exclusive) ── */}
+      {/* ── ADMIN 1-CLICK SWITCH BUTTON (Admin Exclusive) ── */}
       {isRealAdminUser && (
         <div
           className="garage-card"
           style={{
-            padding: '14px 16px',
+            padding: '12px 16px',
             marginBottom: 12,
-            background: 'linear-gradient(135deg, rgba(249,115,22,0.06) 0%, rgba(245,158,11,0.03) 100%)',
+            background: 'linear-gradient(135deg, rgba(249,115,22,0.08) 0%, rgba(245,158,11,0.03) 100%)',
             border: '1px solid rgba(249,115,22,0.3)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 10,
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6, flexWrap: 'wrap', gap: 6 }}>
-            <div style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--accent-color)', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Shield size={15} /> Admin Role View Switcher
+          <div>
+            <div style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Shield size={14} color="var(--accent-color)" />
+              <span>Admin Role View</span>
+              <span style={{ fontSize: '0.68rem', padding: '1px 6px', borderRadius: 4, background: adminViewMode === 'admin' ? 'rgba(249,115,22,0.15)' : 'rgba(59,130,246,0.15)', color: adminViewMode === 'admin' ? 'var(--accent-color)' : '#2563EB', fontWeight: 700 }}>
+                {adminViewMode === 'admin' ? 'Admin Active' : 'User Preview'}
+              </span>
             </div>
-            <span style={{ fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 12, background: adminViewMode === 'admin' ? 'var(--accent-color)' : 'var(--bg-page)', color: adminViewMode === 'admin' ? '#fff' : 'var(--text-secondary)', border: '1px solid var(--border-color)' }}>
-              {adminViewMode === 'admin' ? '🛡️ Admin Mode Active' : '👁️ Standard User Preview'}
-            </span>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>
+              {adminViewMode === 'admin' ? 'Currently viewing full admin controls.' : 'Currently previewing standard driver UI.'}
+            </div>
           </div>
 
-          <p style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', margin: '0 0 10px 0', lineHeight: 1.4 }}>
-            {adminViewMode === 'admin'
-              ? 'You are currently in Admin View with full system switching controls visible.'
-              : 'You are currently previewing the app as a Standard User to test the regular driver interface.'}
-          </p>
-
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button
-              onClick={() => handleSwitchViewMode('admin')}
-              style={{
-                flex: 1,
-                minWidth: '130px',
-                padding: '9px 12px',
-                borderRadius: 8,
-                border: adminViewMode === 'admin' ? '1.5px solid var(--accent-color)' : '1px solid var(--border-color)',
-                background: adminViewMode === 'admin' ? 'rgba(249,115,22,0.15)' : 'var(--bg-card)',
-                color: adminViewMode === 'admin' ? 'var(--accent-color)' : 'var(--text-secondary)',
-                fontWeight: 700,
-                fontSize: '0.78rem',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 6,
-              }}
-            >
-              <Shield size={14} /> Admin View
-            </button>
-
-            <button
-              onClick={() => handleSwitchViewMode('user')}
-              style={{
-                flex: 1,
-                minWidth: '130px',
-                padding: '9px 12px',
-                borderRadius: 8,
-                border: adminViewMode === 'user' ? '1.5px solid var(--accent-color)' : '1px solid var(--border-color)',
-                background: adminViewMode === 'user' ? 'rgba(249,115,22,0.15)' : 'var(--bg-card)',
-                color: adminViewMode === 'user' ? 'var(--accent-color)' : 'var(--text-secondary)',
-                fontWeight: 700,
-                fontSize: '0.78rem',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 6,
-              }}
-            >
-              <Eye size={14} /> Switch to User View
-            </button>
-          </div>
+          <button
+            onClick={handleToggleViewMode}
+            style={{
+              background: adminViewMode === 'admin' ? '#0F172A' : 'var(--accent-color)',
+              color: '#FFFFFF',
+              border: 'none',
+              borderRadius: 8,
+              padding: '8px 14px',
+              fontSize: '0.78rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+            }}
+          >
+            {adminViewMode === 'admin' ? <Eye size={13} /> : <Shield size={13} />}
+            {adminViewMode === 'admin' ? 'Switch to User View' : 'Switch to Admin View'}
+          </button>
         </div>
       )}
 
-      {/* ── Profile card ──────────────────────────────── */}
+      {/* ── Profile card with Gallery Avatar & Bio Data ── */}
       <div
         className="garage-card"
         style={{
-          padding: '22px 18px 18px',
+          padding: '20px 18px',
           marginBottom: 12,
-          border: isAdminView ? '1px solid rgba(249,115,22,0.35)' : '1px solid var(--border-color)',
-          background: isAdminView ? 'linear-gradient(180deg, rgba(249,115,22,0.03) 0%, var(--bg-card) 100%)' : 'var(--bg-card)',
+          border: isRealAdminUser && isAdminView ? '1px solid rgba(249,115,22,0.35)' : '1px solid var(--border-color)',
+          background: isRealAdminUser && isAdminView ? 'linear-gradient(180deg, rgba(249,115,22,0.03) 0%, var(--bg-card) 100%)' : 'var(--bg-card)',
         }}
       >
-        {/* Avatar row */}
+        {/* Avatar & Basic Identity Row */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>
-          {/* Avatar circle */}
-          <div
-            style={{
-              width: 60,
-              height: 60,
-              borderRadius: '50%',
-              background: isAdminView
-                ? 'linear-gradient(135deg, #FF4D00, #F59E0B)'
-                : 'linear-gradient(135deg, #FF4D00, #FF8A50)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '1.4rem',
-              fontWeight: 800,
-              color: '#fff',
-              flexShrink: 0,
-              boxShadow: isAdminView ? '0 4px 18px rgba(245,158,11,0.35)' : '0 4px 14px rgba(255,77,0,0.3)',
-              letterSpacing: '-0.02em',
-            }}
-          >
-            {initials}
+          {/* Avatar circle with Gallery Photo or Initials */}
+          <div style={{ position: 'relative' }}>
+            <div
+              style={{
+                width: 68,
+                height: 68,
+                borderRadius: '50%',
+                background: isRealAdminUser && isAdminView
+                  ? 'linear-gradient(135deg, #FF4D00, #F59E0B)'
+                  : 'linear-gradient(135deg, #FF4D00, #FF8A50)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '1.5rem',
+                fontWeight: 800,
+                color: '#fff',
+                flexShrink: 0,
+                boxShadow: '0 4px 14px rgba(255,77,0,0.25)',
+                overflow: 'hidden',
+                border: '2px solid #FFFFFF',
+              }}
+            >
+              {user?.avatar_url ? (
+                <img
+                  src={user.avatar_url}
+                  alt={displayName}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
+              ) : (
+                initials
+              )}
+            </div>
+
+            {/* Quick Gallery Camera Button */}
+            <button
+              onClick={() => avatarInputRef.current?.click()}
+              title="Upload photo from gallery"
+              style={{
+                position: 'absolute',
+                bottom: -2,
+                right: -2,
+                width: 26,
+                height: 26,
+                borderRadius: '50%',
+                background: 'var(--accent-color)',
+                border: '2px solid #FFFFFF',
+                color: '#FFFFFF',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
+              }}
+            >
+              <Camera size={13} />
+            </button>
           </div>
 
-          {/* Name + level */}
+          {/* Name & Role Identity */}
           <div style={{ flex: 1, minWidth: 0 }}>
-            {editMode ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <input
-                  ref={nameRef}
-                  autoFocus
-                  type="text"
-                  value={nameInput}
-                  onChange={e => setNameInput(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleEditSave()}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span
+                style={{
+                  fontWeight: 800,
+                  fontSize: '1.2rem',
+                  color: 'var(--text-primary)',
+                  letterSpacing: '-0.02em',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {displayName}
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+              {isRealAdminUser && isAdminView ? (
+                <span
                   style={{
-                    flex: 1,
+                    fontSize: '0.72rem',
                     fontWeight: 700,
-                    fontSize: '1rem',
-                    border: '1.5px solid var(--accent-color)',
-                    borderRadius: 8,
-                    padding: '5px 10px',
-                    background: 'var(--bg-input)',
-                    color: 'var(--text-primary)',
-                    fontFamily: 'inherit',
-                    outline: 'none',
-                  }}
-                  maxLength={32}
-                />
-                <button
-                  onClick={handleEditSave}
-                  style={{
-                    background: 'var(--accent-color)',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: 8,
-                    padding: '6px',
-                    cursor: 'pointer',
-                    display: 'flex',
+                    color: 'var(--accent-color)',
+                    background: 'rgba(249,115,22,0.12)',
+                    padding: '2px 8px',
+                    borderRadius: 6,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
                   }}
                 >
-                  <Check size={15} />
-                </button>
-                <button
-                  onClick={handleEditCancel}
+                  🛡️ System Administrator
+                </span>
+              ) : (
+                <span
                   style={{
-                    background: 'var(--bg-page)',
-                    border: '1px solid var(--border-color)',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
                     color: 'var(--text-secondary)',
-                    borderRadius: 8,
-                    padding: '6px',
-                    cursor: 'pointer',
-                    display: 'flex',
                   }}
                 >
-                  <X size={15} />
+                  {level.emoji} {level.label}
+                </span>
+              )}
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>·</span>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                {currentUser?.email || 'Local Driver'}
+              </span>
+            </div>
+
+            {/* Photo Action Links */}
+            <div style={{ display: 'flex', gap: 10, marginTop: 6, alignItems: 'center' }}>
+              <button
+                onClick={() => avatarInputRef.current?.click()}
+                disabled={uploadingPic}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--accent-color)',
+                  fontSize: '0.72rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  padding: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                }}
+              >
+                <Camera size={11} />
+                {uploadingPic ? 'Optimizing...' : (user?.avatar_url ? 'Change Photo' : 'Add Photo from Gallery')}
+              </button>
+              {user?.avatar_url && (
+                <button
+                  onClick={handleRemoveAvatar}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--text-muted)',
+                    fontSize: '0.7rem',
+                    cursor: 'pointer',
+                    padding: 0,
+                  }}
+                >
+                  Remove
                 </button>
-              </div>
-            ) : (
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span
-                    style={{
-                      fontWeight: 800,
-                      fontSize: '1.15rem',
-                      color: 'var(--text-primary)',
-                      letterSpacing: '-0.02em',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {displayName}
-                  </span>
-                  <button
-                    onClick={() => { setEditMode(true); setNameInput(displayName); }}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      cursor: 'pointer',
-                      color: 'var(--text-muted)',
-                      padding: 2,
-                      display: 'flex',
-                    }}
-                  >
-                    <Pencil size={13} />
-                  </button>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
-                  {isAdminView ? (
-                    <span
-                      style={{
-                        fontSize: '0.72rem',
-                        fontWeight: 700,
-                        color: 'var(--accent-color)',
-                        background: 'rgba(249,115,22,0.12)',
-                        padding: '2px 8px',
-                        borderRadius: 6,
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 4,
-                      }}
-                    >
-                      🛡️ System Administrator
-                    </span>
-                  ) : (
-                    <span
-                      style={{
-                        fontSize: '0.75rem',
-                        fontWeight: 600,
-                        color: 'var(--text-secondary)',
-                      }}
-                    >
-                      {level.emoji} {level.label}
-                    </span>
-                  )}
-                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>·</span>
-                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                    {currentUser?.email || 'Local Garage'}
-                  </span>
-                </div>
-              </div>
+              )}
+              {picSuccess && (
+                <span style={{ fontSize: '0.7rem', color: 'var(--success-color)', fontWeight: 600 }}>
+                  ✓ {picSuccess}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Minimal Bio Data & Editing Section ── */}
+        <div
+          style={{
+            background: 'var(--bg-page)',
+            borderRadius: 12,
+            padding: '12px 14px',
+            marginBottom: 16,
+            border: '1px solid var(--border-color)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Driver Details
+            </span>
+            {!editBioMode && (
+              <button
+                onClick={() => setEditBioMode(true)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--accent-color)',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  padding: '2px 6px',
+                }}
+              >
+                <Pencil size={12} /> Edit Profile
+              </button>
             )}
           </div>
+
+          {!editBioMode ? (
+            /* Bio Details Grid */
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 10 }}>
+              <div>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>First Name</div>
+                <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                  {user?.firstName || (user?.name ? user.name.split(' ')[0] : '—')}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Last Name</div>
+                <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                  {user?.lastName || (user?.name && user.name.includes(' ') ? user.name.split(' ').slice(1).join(' ') : '—')}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Age</div>
+                <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                  {user?.age ? `${user.age} yrs` : 'Not specified'}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Gender</div>
+                <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                  {user?.gender || 'Not specified'}
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* Bio Edit Form */
+            <form onSubmit={handleSaveBio} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <div>
+                  <label style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: 3 }}>
+                    First Name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="First name"
+                    value={bioForm.firstName}
+                    onChange={(e) => setBioForm({ ...bioForm, firstName: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '7px 10px',
+                      borderRadius: 6,
+                      border: '1px solid var(--border-color)',
+                      background: 'var(--bg-card)',
+                      color: 'var(--text-primary)',
+                      fontSize: '0.82rem',
+                      outline: 'none',
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: 3 }}>
+                    Last Name
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Last name"
+                    value={bioForm.lastName}
+                    onChange={(e) => setBioForm({ ...bioForm, lastName: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '7px 10px',
+                      borderRadius: 6,
+                      border: '1px solid var(--border-color)',
+                      background: 'var(--bg-card)',
+                      color: 'var(--text-primary)',
+                      fontSize: '0.82rem',
+                      outline: 'none',
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <div>
+                  <label style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: 3 }}>
+                    Age
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="120"
+                    placeholder="e.g. 28"
+                    value={bioForm.age}
+                    onChange={(e) => setBioForm({ ...bioForm, age: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '7px 10px',
+                      borderRadius: 6,
+                      border: '1px solid var(--border-color)',
+                      background: 'var(--bg-card)',
+                      color: 'var(--text-primary)',
+                      fontSize: '0.82rem',
+                      outline: 'none',
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: 3 }}>
+                    Gender
+                  </label>
+                  <select
+                    value={bioForm.gender}
+                    onChange={(e) => setBioForm({ ...bioForm, gender: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '7px 10px',
+                      borderRadius: 6,
+                      border: '1px solid var(--border-color)',
+                      background: 'var(--bg-card)',
+                      color: 'var(--text-primary)',
+                      fontSize: '0.82rem',
+                      outline: 'none',
+                    }}
+                  >
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                    <option value="Prefer not to say">Prefer not to say</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: 8, marginTop: 4, justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  onClick={() => setEditBioMode(false)}
+                  style={{
+                    background: 'var(--bg-card)',
+                    border: '1px solid var(--border-color)',
+                    color: 'var(--text-secondary)',
+                    borderRadius: 6,
+                    padding: '6px 12px',
+                    fontSize: '0.75rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingBio}
+                  className="btn-orange"
+                  style={{ padding: '6px 14px', fontSize: '0.75rem' }}
+                >
+                  {savingBio ? 'Saving...' : 'Save Profile'}
+                </button>
+              </div>
+            </form>
+          )}
         </div>
 
         {/* Level progress */}
@@ -792,9 +1029,8 @@ export default function Profile() {
         </div>
       )}
 
-      {/* ── Danger & Auth Zone ───────────────────────────── */}
+      {/* ── Sign Out Zone ───────────────────────────────── */}
       <div className="garage-card" style={{ padding: '14px 18px', marginBottom: 24 }}>
-        {/* Sign out */}
         <button
           onClick={logout}
           style={{
@@ -805,8 +1041,7 @@ export default function Profile() {
             background: 'none',
             border: 'none',
             cursor: 'pointer',
-            padding: '10px 0',
-            borderBottom: '1px solid var(--border-color)',
+            padding: '6px 0',
             textAlign: 'left',
             fontFamily: 'inherit',
           }}
@@ -830,110 +1065,6 @@ export default function Profile() {
             Sign Out
           </span>
         </button>
-
-        {/* Admin Unlock Modal / Row */}
-        {!isRealAdminUser && (
-          <div style={{ paddingTop: 10 }}>
-            {!showAdminLogin ? (
-              <button
-                onClick={() => setShowAdminLogin(true)}
-                style={{
-                  width: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 12,
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  padding: '4px 0',
-                  textAlign: 'left',
-                  fontFamily: 'inherit',
-                }}
-              >
-                <div
-                  style={{
-                    width: 34,
-                    height: 34,
-                    borderRadius: 9,
-                    background: 'var(--bg-page)',
-                    border: '1px solid var(--border-color)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: 'var(--text-muted)',
-                  }}
-                >
-                  <Key size={15} />
-                </div>
-                <div>
-                  <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                    Unlock Admin Profile
-                  </div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                    Enter credentials or PIN to access admin switching options
-                  </div>
-                </div>
-              </button>
-            ) : (
-              <form onSubmit={handleAdminAuthSubmit} style={{ paddingTop: 6 }}>
-                <div style={{ fontSize: '0.78rem', fontWeight: 600, marginBottom: 6, color: 'var(--text-primary)' }}>
-                  Enter Admin Credential or PIN:
-                </div>
-                <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-                  <input
-                    type="password"
-                    placeholder="Admin PIN (e.g. admin2026 or email)"
-                    value={adminCredInput}
-                    onChange={e => setAdminCredInput(e.target.value)}
-                    autoFocus
-                    style={{
-                      flex: 1,
-                      minWidth: '160px',
-                      padding: '8px 12px',
-                      borderRadius: 8,
-                      border: '1px solid var(--border-color)',
-                      background: 'var(--bg-input)',
-                      color: 'var(--text-primary)',
-                      fontSize: '0.85rem',
-                      outline: 'none',
-                    }}
-                  />
-                  <button
-                    type="submit"
-                    className="btn-orange"
-                    style={{ padding: '8px 14px', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
-                  >
-                    Unlock
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setShowAdminLogin(false); setAdminError(''); }}
-                    style={{
-                      background: 'var(--bg-page)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: 8,
-                      padding: '8px 10px',
-                      color: 'var(--text-secondary)',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <X size={15} />
-                  </button>
-                </div>
-                {adminError && (
-                  <div style={{ fontSize: '0.75rem', color: 'var(--danger-color)', marginBottom: 6 }}>
-                    {adminError}
-                  </div>
-                )}
-                {adminSuccess && (
-                  <div style={{ fontSize: '0.75rem', color: 'var(--success-color)', marginBottom: 6 }}>
-                    {adminSuccess}
-                  </div>
-                )}
-              </form>
-            )}
-          </div>
-        )}
       </div>
 
       {/* Tiny version tag */}

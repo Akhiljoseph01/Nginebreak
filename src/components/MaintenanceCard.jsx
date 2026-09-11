@@ -62,10 +62,10 @@ export default function MaintenanceCard({ mod, vehicleId, currentOdometer }) {
     >
       {/* Main row */}
       <div
-        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}
         onClick={() => setExpanded(e => !e)}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: '160px' }}>
           {/* Icon box */}
           <div style={{
             width: 38, height: 38, borderRadius: 8, background: iconBg,
@@ -93,7 +93,7 @@ export default function MaintenanceCard({ mod, vehicleId, currentOdometer }) {
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, marginLeft: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, marginLeft: 'auto' }}>
           <button
             style={{
               background: 'rgba(16,185,129,0.08)', color: 'var(--success-color)',
@@ -116,7 +116,7 @@ export default function MaintenanceCard({ mod, vehicleId, currentOdometer }) {
         <div style={{
           marginTop: 10, paddingTop: 10,
           borderTop: '1px solid var(--border-color)',
-          fontSize: '0.8rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8
+          fontSize: '0.8rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 8
         }}>
           {mod.interval_km && (
             <div>
@@ -151,7 +151,7 @@ export default function MaintenanceCard({ mod, vehicleId, currentOdometer }) {
           onSubmit={handleComplete}
           style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border-color)' }}
         >
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10, marginBottom: 10 }}>
             <div>
               <label className="form-label" style={{ marginBottom: 4, display: 'block' }}>Odometer (km)</label>
               <input

@@ -26,6 +26,8 @@ function garageReducer(state, action) {
       };
     case "SET_VEHICLES":
       return { ...state, vehicles: action.vehicles };
+    case "SET_USER":
+      return { ...state, user: action.user };
     case "SET_ACTIVE_VEHICLE":
       return { ...state, activeVehicleId: action.id };
     case "SET_LOADING":
@@ -226,6 +228,12 @@ export function GarageProvider({ children }) {
     dispatch({ type: "SET_VEHICLES", vehicles: data.vehicles });
   };
 
+  const updateUserProfile = async (profileUpdates) => {
+    const updatedUser = await StorageService.updateUserProfile(profileUpdates);
+    dispatch({ type: "SET_USER", user: updatedUser });
+    return updatedUser;
+  };
+
   const setActiveVehicle = (id) =>
     dispatch({ type: "SET_ACTIVE_VEHICLE", id });
 
@@ -237,6 +245,8 @@ export function GarageProvider({ children }) {
         login,
         register,
         logout,
+        // User Profile
+        updateUserProfile,
         // Garage
         addVehicle,
         deleteVehicle,

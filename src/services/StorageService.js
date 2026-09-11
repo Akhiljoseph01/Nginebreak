@@ -329,7 +329,8 @@ class StorageService {
 
       const cloudData = {
         user: {
-          name: authUser.display_name || "Enthusiast",
+          ...(localData?.user || {}),
+          name: localData?.user?.name || authUser.display_name || "Enthusiast",
           id: authUser.id,
         },
         vehicles: assembledVehicles,
@@ -352,6 +353,52 @@ class StorageService {
     const storageKey = getStorageKey(authUser?.id);
     await localforage.setItem(storageKey, data);
     await localforage.setItem("garage_data", data);
+  }
+
+  // ==========================================
+  // Update User Profile (Bio, Name, Avatar)
+  // ==========================================
+  async updateUserProfile(profileUpdates) {
+    const authUser = await getCurrentAuthUser();
+    const storageKey = getStorageKey(authUser?.id);
+    const data = await this.getData();
+    
+    data.user = {
+      ...(data.user || {}),
+      ...profileUpdates,
+    };
+    
+    // Derive full name if firstName / lastName provided
+    if (profileUpdates.firstName !== undefined || profileUpdates.lastName !== undefined) {
+      const fn = profileUpdates.firstName !== undefined ? profileUpdates.firstName : (data.user.firstName || "");
+      const ln = profileUpdates.lastName !== undefined ? profileUpdates.lastName : (data.user.lastName || "");
+      const fullName = `${fn} ${ln}`.trim();
+      if (fullName) {
+        data.user.name = fullName;
+      }
+    }
+
+    try {
+      localStorage.setItem(`nginebreak_profile_${authUser?.id || "guest"}`, JSON.stringify(data.user));
+    } catch (_) {}
+
+    await this.saveData(data);
+
+    if (isSupabaseConfigured() && supabase && authUser) {
+      try {
+        await supabase.from("profiles").upsert([
+          {
+            id: authUser.id,
+            display_name: data.user.name || authUser.display_name,
+            email: authUser.email,
+          },
+        ]);
+      } catch (e) {
+        console.warn("[StorageService] Profile upsert warning:", e.message);
+      }
+    }
+
+    return data.user;
   }
 
   // ==========================================

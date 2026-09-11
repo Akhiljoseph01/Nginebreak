@@ -160,7 +160,27 @@ export default function GarageDashboard() {
           </h1>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div className="avatar">{isAdmin ? "A" : (user?.name?.[0]?.toUpperCase() || "G")}</div>
+          <div
+            className="avatar"
+            style={{
+              overflow: "hidden",
+              padding: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              border: "1.5px solid var(--border-color)",
+            }}
+          >
+            {user?.avatar_url ? (
+              <img
+                src={user.avatar_url}
+                alt={user.name || "Profile"}
+                style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }}
+              />
+            ) : (
+              isAdmin ? "A" : (user?.name?.[0]?.toUpperCase() || "G")
+            )}
+          </div>
           <button
             title="Sign out"
             onClick={logout}
@@ -179,12 +199,12 @@ export default function GarageDashboard() {
         </div>
       </div>
 
-      {/* ── ADMIN PREVIEWING AS USER BANNER ── */}
+      {/* ── ADMIN SINGLE-CLICK SWITCH BUTTON (When in User View) ── */}
       {isRealAdminUser && adminViewMode === "user" && (
         <div
           style={{
-            background: "rgba(59, 130, 246, 0.08)",
-            border: "1px solid rgba(59, 130, 246, 0.25)",
+            background: "rgba(249, 115, 22, 0.08)",
+            border: "1px solid rgba(249, 115, 22, 0.3)",
             borderRadius: 12,
             padding: "10px 14px",
             marginBottom: 16,
@@ -196,9 +216,8 @@ export default function GarageDashboard() {
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <Eye size={16} color="var(--info-color)" />
-            <span style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--text-primary)" }}>
-              Previewing app UI as Standard Driver
+            <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text-primary)" }}>
+              👁️ Viewing as Standard User
             </span>
           </div>
           <button
@@ -207,17 +226,18 @@ export default function GarageDashboard() {
               background: "var(--accent-color)",
               color: "#fff",
               border: "none",
-              borderRadius: 6,
-              padding: "4px 10px",
-              fontSize: "0.72rem",
+              borderRadius: 8,
+              padding: "7px 14px",
+              fontSize: "0.78rem",
               fontWeight: 700,
               cursor: "pointer",
               display: "flex",
               alignItems: "center",
-              gap: 4,
+              gap: 6,
+              boxShadow: "0 2px 8px rgba(249,115,22,0.3)",
             }}
           >
-            <Shield size={12} /> Switch to Admin View
+            <Shield size={14} /> Switch to Admin View
           </button>
         </div>
       )}
@@ -233,43 +253,48 @@ export default function GarageDashboard() {
             marginBottom: 16,
           }}
         >
-          {/* Header */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 6 }}>
+          {/* Header with SINGLE-CLICK SWITCH BUTTON */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <Shield size={16} color="var(--accent-color)" />
-              <span style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--text-primary)", letterSpacing: "0.02em" }}>
+              <span style={{ fontSize: "0.85rem", fontWeight: 800, color: "var(--text-primary)", letterSpacing: "0.02em" }}>
                 Admin Command Center
               </span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              {/* Single Button to Switch to User View with 1-click */}
               <button
                 onClick={() => setAdminViewMode("user")}
                 style={{
-                  background: "none",
-                  border: "1px solid var(--border-color)",
-                  borderRadius: 6,
-                  padding: "3px 8px",
-                  fontSize: "0.7rem",
-                  color: "var(--text-secondary)",
+                  background: "#0F172A",
+                  color: "#FFFFFF",
+                  border: "none",
+                  borderRadius: 8,
+                  padding: "6px 12px",
+                  fontSize: "0.74rem",
+                  fontWeight: 700,
                   cursor: "pointer",
                   display: "flex",
                   alignItems: "center",
-                  gap: 4,
+                  gap: 6,
                 }}
-                title="Preview app as standard driver"
+                title="Switch immediately to user view"
               >
-                <Eye size={12} /> Switch to User View
+                <Eye size={13} /> Switch to User View
               </button>
               <Link
                 to="/profile"
                 style={{
-                  fontSize: "0.72rem",
+                  fontSize: "0.74rem",
                   fontWeight: 600,
                   color: "var(--accent-color)",
                   textDecoration: "none",
                   display: "flex",
                   alignItems: "center",
                   gap: 4,
+                  padding: "5px 8px",
+                  borderRadius: 6,
+                  background: "rgba(249,115,22,0.1)",
                 }}
               >
                 <Sliders size={12} /> Settings
