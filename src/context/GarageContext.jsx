@@ -174,6 +174,12 @@ export function GarageProvider({ children }) {
     );
   };
 
+  const deleteVehicle = async (vehicleId) => {
+    const data = await StorageService.deleteVehicle(vehicleId);
+    dispatch({ type: "SET_VEHICLES", vehicles: data.vehicles });
+    return data;
+  };
+
   const addMaintenanceModule = async (vehicleId, params) => {
     const data = await StorageService.addMaintenanceModule(vehicleId, params);
     dispatch({ type: "SET_VEHICLES", vehicles: data.vehicles });
@@ -233,6 +239,7 @@ export function GarageProvider({ children }) {
         logout,
         // Garage
         addVehicle,
+        deleteVehicle,
         addMaintenanceModule,
         updateOdometer,
         rewindOdometer,

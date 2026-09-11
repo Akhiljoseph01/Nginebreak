@@ -454,6 +454,34 @@ class StorageService {
   }
 
   // ==========================================
+  // Delete Vehicle
+  // ==========================================
+  async deleteVehicle(vehicleId) {
+    if (isSupabaseConfigured() && supabase) {
+      try {
+        await supabase.from("garage_members").delete().eq("vehicle_id", vehicleId).catch(() => {});
+        await supabase.from("odometer_history").delete().eq("vehicle_id", vehicleId).catch(() => {});
+        await supabase.from("service_history").delete().eq("vehicle_id", vehicleId).catch(() => {});
+        await supabase.from("maintenance_modules").delete().eq("vehicle_id", vehicleId).catch(() => {});
+
+        const { error } = await supabase.from("vehicles").delete().eq("id", vehicleId);
+        if (error) {
+          console.error("[StorageService] Supabase delete vehicle error:", error.message);
+        }
+      } catch (err) {
+        console.error("[StorageService] Supabase vehicle delete failed:", err.message);
+      }
+    }
+
+    const data = await this.getData().catch(() => DEFAULT_DATA);
+    if (data.vehicles) {
+      data.vehicles = data.vehicles.filter((v) => v.id !== vehicleId);
+    }
+    await this.saveData(data);
+    return data;
+  }
+
+  // ==========================================
   // Add Maintenance Module
   // ==========================================
   async addMaintenanceModule(vehicleId, moduleParams) {

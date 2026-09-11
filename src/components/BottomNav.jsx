@@ -42,10 +42,13 @@ export default function BottomNav() {
 
         {/* Settings at bottom */}
         <div className="sidebar-nav-bottom">
-          <div className="sidebar-link" style={{ cursor: 'default', opacity: 0.5 }}>
+          <NavLink
+            to="/profile"
+            className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}
+          >
             <Settings size={18} />
             Settings
-          </div>
+          </NavLink>
         </div>
       </aside>
 
