@@ -14,6 +14,9 @@ import {
   Clock,
   AlertTriangle,
   Mail,
+  Crown,
+  CheckCircle2,
+  Sparkles,
 } from "lucide-react";
 import { uploadVehiclePhoto, formatBytes } from "../utils/imageOptimizer";
 
