@@ -4,6 +4,9 @@ import { useGarage } from "../context/GarageContext";
 import SwipeableVehicleCard from "../components/SwipeableVehicleCard";
 import {
   isUserAdmin,
+  isRealAdmin,
+  getAdminViewMode,
+  setAdminViewMode,
   getAdminSettings,
   saveAdminSettings,
 } from "../utils/adminAuth";
@@ -18,6 +21,7 @@ import {
   Database,
   CheckCircle2,
   AlertCircle,
+  Eye,
 } from "lucide-react";
 
 // ── Coming Soon chip ────────────────────────────────────────
@@ -39,14 +43,21 @@ function ComingSoonChip({ label, icon }) {
 export default function GarageDashboard() {
   const { vehicles, user, currentUser, loading, logout } = useGarage();
 
+  const [isRealAdminUser, setIsRealAdminUser] = useState(() => isRealAdmin(currentUser));
   const [isAdmin, setIsAdmin] = useState(() => isUserAdmin(currentUser));
+  const [adminViewMode, setAdminViewModeState] = useState(() => getAdminViewMode());
   const [adminSettings, setAdminSettings] = useState(() => getAdminSettings());
   const [backupExported, setBackupExported] = useState(false);
 
   useEffect(() => {
+    setIsRealAdminUser(isRealAdmin(currentUser));
     setIsAdmin(isUserAdmin(currentUser));
+    setAdminViewModeState(getAdminViewMode());
+
     const handleSync = () => {
+      setIsRealAdminUser(isRealAdmin(currentUser));
       setIsAdmin(isUserAdmin(currentUser));
+      setAdminViewModeState(getAdminViewMode());
       setAdminSettings(getAdminSettings());
     };
     window.addEventListener("admin_state_changed", handleSync);
@@ -168,7 +179,50 @@ export default function GarageDashboard() {
         </div>
       </div>
 
-      {/* ── ADMIN COMMAND CENTER (Visible only to Admin) ── */}
+      {/* ── ADMIN PREVIEWING AS USER BANNER ── */}
+      {isRealAdminUser && adminViewMode === "user" && (
+        <div
+          style={{
+            background: "rgba(59, 130, 246, 0.08)",
+            border: "1px solid rgba(59, 130, 246, 0.25)",
+            borderRadius: 12,
+            padding: "10px 14px",
+            marginBottom: 16,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 10,
+            flexWrap: "wrap",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Eye size={16} color="var(--info-color)" />
+            <span style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--text-primary)" }}>
+              Previewing app UI as Standard Driver
+            </span>
+          </div>
+          <button
+            onClick={() => setAdminViewMode("admin")}
+            style={{
+              background: "var(--accent-color)",
+              color: "#fff",
+              border: "none",
+              borderRadius: 6,
+              padding: "4px 10px",
+              fontSize: "0.72rem",
+              fontWeight: 700,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+            }}
+          >
+            <Shield size={12} /> Switch to Admin View
+          </button>
+        </div>
+      )}
+
+      {/* ── ADMIN COMMAND CENTER (Visible only in Admin View) ── */}
       {isAdmin && (
         <div
           style={{
@@ -180,34 +234,54 @@ export default function GarageDashboard() {
           }}
         >
           {/* Header */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 6 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <Shield size={16} color="var(--accent-color)" />
               <span style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--text-primary)", letterSpacing: "0.02em" }}>
                 Admin Command Center
               </span>
             </div>
-            <Link
-              to="/profile"
-              style={{
-                fontSize: "0.72rem",
-                fontWeight: 600,
-                color: "var(--accent-color)",
-                textDecoration: "none",
-                display: "flex",
-                alignItems: "center",
-                gap: 4,
-              }}
-            >
-              <Sliders size={12} /> Full Settings
-            </Link>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <button
+                onClick={() => setAdminViewMode("user")}
+                style={{
+                  background: "none",
+                  border: "1px solid var(--border-color)",
+                  borderRadius: 6,
+                  padding: "3px 8px",
+                  fontSize: "0.7rem",
+                  color: "var(--text-secondary)",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+                title="Preview app as standard driver"
+              >
+                <Eye size={12} /> Switch to User View
+              </button>
+              <Link
+                to="/profile"
+                style={{
+                  fontSize: "0.72rem",
+                  fontWeight: 600,
+                  color: "var(--accent-color)",
+                  textDecoration: "none",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+              >
+                <Sliders size={12} /> Settings
+              </Link>
+            </div>
           </div>
 
-          {/* Quick Metrics */}
+          {/* Quick Metrics — Responsive Grid */}
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(3, 1fr)",
+              gridTemplateColumns: "repeat(auto-fit, minmax(95px, 1fr))",
               gap: 8,
               marginBottom: 12,
             }}

@@ -153,6 +153,30 @@ a { text-decoration: none; }
   min-height: 100vh;
 }
 
+/* ── Layout Shell Responsiveness ──────────────────────────── */
+@media (min-width: 769px) {
+  /* On Desktop: Show sidebar, hide mobile bottom nav */
+  .bottom-nav {
+    display: none !important;
+  }
+}
+
+@media (max-width: 768px) {
+  /* On Mobile & Tablet: Hide desktop sidebar, reset main content margin */
+  .sidebar {
+    display: none !important;
+  }
+  .main-content {
+    margin-left: 0 !important;
+  }
+  .app-container {
+    padding-left: 12px;
+    padding-right: 12px;
+    padding-bottom: 90px; /* Safe space for mobile bottom nav */
+  }
+}
+
+
 /* ── Bottom Nav (mobile only) ─────────────────────────────── */
 .bottom-nav {
   position: fixed;

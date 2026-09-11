@@ -4,6 +4,7 @@
 
 const STORAGE_KEY_ADMIN_MODE = "nginebreak_admin_mode";
 const STORAGE_KEY_ADMIN_SETTINGS = "nginebreak_admin_settings";
+const STORAGE_KEY_ADMIN_VIEW_MODE = "nginebreak_admin_view_mode"; // 'admin' | 'user'
 
 // Default admin email configured for Nginebreak
 export const DEFAULT_ADMIN_EMAIL = import.meta.env.VITE_ADMIN_EMAIL || "wopstrat@gmail.com";
@@ -24,11 +25,17 @@ export const DEFAULT_ADMIN_SETTINGS = {
 };
 
 /**
- * Checks if the current user has Admin privileges:
- * 1. Matches configured admin email in Supabase/Auth (wopstrat@gmail.com), OR
- * 2. Admin mode unlocked in browser session via PIN / Admin Credentials
+ * Checks if the user is an Admin AND currently in Admin View Mode
  */
 export function isUserAdmin(currentUser) {
+  if (!isRealAdmin(currentUser)) return false;
+  return getAdminViewMode() !== "user";
+}
+
+/**
+ * Checks if the user has Admin rights (regardless of preview mode)
+ */
+export function isRealAdmin(currentUser) {
   if (currentUser?.email) {
     const adminEmail = (import.meta.env.VITE_ADMIN_EMAIL || DEFAULT_ADMIN_EMAIL).toLowerCase().trim();
     if (currentUser.email.toLowerCase().trim() === adminEmail) {
@@ -36,6 +43,22 @@ export function isUserAdmin(currentUser) {
     }
   }
   return localStorage.getItem(STORAGE_KEY_ADMIN_MODE) === "true";
+}
+
+/**
+ * Get current admin view mode ('admin' or 'user')
+ */
+export function getAdminViewMode() {
+  return localStorage.getItem(STORAGE_KEY_ADMIN_VIEW_MODE) || "admin";
+}
+
+/**
+ * Set admin view mode ('admin' or 'user')
+ */
+export function setAdminViewMode(mode) {
+  localStorage.setItem(STORAGE_KEY_ADMIN_VIEW_MODE, mode);
+  window.dispatchEvent(new Event("admin_state_changed"));
+  return mode;
 }
 
 /**
@@ -53,6 +76,7 @@ export function activateAdminMode(credentialOrPin) {
     cleaned === "admin"
   ) {
     localStorage.setItem(STORAGE_KEY_ADMIN_MODE, "true");
+    setAdminViewMode("admin");
     window.dispatchEvent(new Event("admin_state_changed"));
     return { success: true };
   }
@@ -60,10 +84,11 @@ export function activateAdminMode(credentialOrPin) {
 }
 
 /**
- * Deactivate admin mode
+ * Deactivate admin mode completely
  */
 export function deactivateAdminMode() {
   localStorage.removeItem(STORAGE_KEY_ADMIN_MODE);
+  localStorage.removeItem(STORAGE_KEY_ADMIN_VIEW_MODE);
   window.dispatchEvent(new Event("admin_state_changed"));
 }
 

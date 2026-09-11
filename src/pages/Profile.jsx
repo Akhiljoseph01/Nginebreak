@@ -3,6 +3,9 @@ import { useGarage } from '../context/GarageContext';
 import { STATUS } from '../services/CalculationEngine';
 import {
   isUserAdmin,
+  isRealAdmin,
+  getAdminViewMode,
+  setAdminViewMode,
   activateAdminMode,
   deactivateAdminMode,
   getAdminSettings,
@@ -28,6 +31,8 @@ import {
   Key,
   CheckCircle2,
   Zap,
+  Eye,
+  UserCheck,
 } from 'lucide-react';
 
 const LEVELS = [
@@ -114,7 +119,7 @@ function SettingRow({ icon: Icon, label, desc, right, badge }) {
         <Icon size={15} />
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
           <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
             {label}
           </span>
@@ -148,9 +153,12 @@ function SettingRow({ icon: Icon, label, desc, right, badge }) {
 export default function Profile() {
   const { vehicles, user, currentUser, logout } = useGarage();
 
-  // Admin status and settings
-  const [isAdmin, setIsAdmin] = useState(() => isUserAdmin(currentUser));
+  // Admin status, view mode, and settings
+  const [isRealAdminUser, setIsRealAdminUser] = useState(() => isRealAdmin(currentUser));
+  const [isAdminView, setIsAdminView] = useState(() => isUserAdmin(currentUser));
+  const [adminViewMode, setAdminViewModeState] = useState(() => getAdminViewMode());
   const [adminSettings, setAdminSettings] = useState(() => getAdminSettings());
+
   const [showAdminLogin, setShowAdminLogin] = useState(false);
   const [adminCredInput, setAdminCredInput] = useState('');
   const [adminError, setAdminError] = useState('');
@@ -158,9 +166,14 @@ export default function Profile() {
 
   // Sync admin state
   useEffect(() => {
-    setIsAdmin(isUserAdmin(currentUser));
+    setIsRealAdminUser(isRealAdmin(currentUser));
+    setIsAdminView(isUserAdmin(currentUser));
+    setAdminViewModeState(getAdminViewMode());
+
     const handleStateChange = () => {
-      setIsAdmin(isUserAdmin(currentUser));
+      setIsRealAdminUser(isRealAdmin(currentUser));
+      setIsAdminView(isUserAdmin(currentUser));
+      setAdminViewModeState(getAdminViewMode());
       setAdminSettings(getAdminSettings());
     };
     window.addEventListener('admin_state_changed', handleStateChange);
@@ -175,6 +188,11 @@ export default function Profile() {
   const updateSetting = (key, val) => {
     const updated = saveAdminSettings({ [key]: val });
     setAdminSettings(updated);
+  };
+
+  // Handler to toggle role view mode (Admin View vs User View preview)
+  const handleSwitchViewMode = (mode) => {
+    setAdminViewMode(mode);
   };
 
   // Stats
@@ -192,7 +210,7 @@ export default function Profile() {
 
   // Edit profile state
   const [editMode, setEditMode] = useState(false);
-  const [displayName, setDisplayName] = useState(user?.name || (isAdmin ? 'System Admin' : 'Enthusiast'));
+  const [displayName, setDisplayName] = useState(user?.name || (isAdminView ? 'System Admin' : 'Enthusiast'));
   const [nameInput, setNameInput] = useState(displayName);
 
   const nameRef = useRef();
@@ -228,20 +246,20 @@ export default function Profile() {
   };
 
   // Derived initials
-  const initials = isAdmin ? 'A' : (displayName?.[0]?.toUpperCase() || 'G');
+  const initials = isAdminView ? 'A' : (displayName?.[0]?.toUpperCase() || 'G');
 
   return (
     <div className="app-container" style={{ paddingTop: 0 }}>
 
       {/* ── Page header ───────────────────────────────── */}
-      <div className="page-header" style={{ marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div className="page-header" style={{ marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
         <div>
-          <h1 className="page-title">{isAdmin ? 'Admin Profile' : 'Profile'}</h1>
+          <h1 className="page-title">{isAdminView ? 'Admin Profile' : 'Profile'}</h1>
           <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-            {isAdmin ? 'System Administration & Global Controls' : 'Personal garage & driver stats'}
+            {isAdminView ? 'System Administration & Global Controls' : 'Personal garage & driver stats'}
           </p>
         </div>
-        {isAdmin && (
+        {isRealAdminUser && (
           <span
             style={{
               display: 'inline-flex',
@@ -249,7 +267,7 @@ export default function Profile() {
               gap: 4,
               fontSize: '0.7rem',
               fontWeight: 700,
-              padding: '4px 8px',
+              padding: '4px 10px',
               borderRadius: 20,
               background: 'linear-gradient(135deg, rgba(249,115,22,0.2), rgba(234,88,12,0.1))',
               border: '1px solid var(--accent-color)',
@@ -257,10 +275,84 @@ export default function Profile() {
               letterSpacing: '0.04em',
             }}
           >
-            <Shield size={12} /> SUPERUSER
+            <Shield size={12} /> {isAdminView ? 'ADMIN VIEW' : 'PREVIEW MODE'}
           </span>
         )}
       </div>
+
+      {/* ── ADMIN ROLE VIEW SWITCHER (Admin Exclusive) ── */}
+      {isRealAdminUser && (
+        <div
+          className="garage-card"
+          style={{
+            padding: '14px 16px',
+            marginBottom: 12,
+            background: 'linear-gradient(135deg, rgba(249,115,22,0.06) 0%, rgba(245,158,11,0.03) 100%)',
+            border: '1px solid rgba(249,115,22,0.3)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6, flexWrap: 'wrap', gap: 6 }}>
+            <div style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--accent-color)', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Shield size={15} /> Admin Role View Switcher
+            </div>
+            <span style={{ fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 12, background: adminViewMode === 'admin' ? 'var(--accent-color)' : 'var(--bg-page)', color: adminViewMode === 'admin' ? '#fff' : 'var(--text-secondary)', border: '1px solid var(--border-color)' }}>
+              {adminViewMode === 'admin' ? '🛡️ Admin Mode Active' : '👁️ Standard User Preview'}
+            </span>
+          </div>
+
+          <p style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', margin: '0 0 10px 0', lineHeight: 1.4 }}>
+            {adminViewMode === 'admin'
+              ? 'You are currently in Admin View with full system switching controls visible.'
+              : 'You are currently previewing the app as a Standard User to test the regular driver interface.'}
+          </p>
+
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button
+              onClick={() => handleSwitchViewMode('admin')}
+              style={{
+                flex: 1,
+                minWidth: '130px',
+                padding: '9px 12px',
+                borderRadius: 8,
+                border: adminViewMode === 'admin' ? '1.5px solid var(--accent-color)' : '1px solid var(--border-color)',
+                background: adminViewMode === 'admin' ? 'rgba(249,115,22,0.15)' : 'var(--bg-card)',
+                color: adminViewMode === 'admin' ? 'var(--accent-color)' : 'var(--text-secondary)',
+                fontWeight: 700,
+                fontSize: '0.78rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+              }}
+            >
+              <Shield size={14} /> Admin View
+            </button>
+
+            <button
+              onClick={() => handleSwitchViewMode('user')}
+              style={{
+                flex: 1,
+                minWidth: '130px',
+                padding: '9px 12px',
+                borderRadius: 8,
+                border: adminViewMode === 'user' ? '1.5px solid var(--accent-color)' : '1px solid var(--border-color)',
+                background: adminViewMode === 'user' ? 'rgba(249,115,22,0.15)' : 'var(--bg-card)',
+                color: adminViewMode === 'user' ? 'var(--accent-color)' : 'var(--text-secondary)',
+                fontWeight: 700,
+                fontSize: '0.78rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+              }}
+            >
+              <Eye size={14} /> Switch to User View
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── Profile card ──────────────────────────────── */}
       <div
@@ -268,8 +360,8 @@ export default function Profile() {
         style={{
           padding: '22px 18px 18px',
           marginBottom: 12,
-          border: isAdmin ? '1px solid rgba(249,115,22,0.35)' : '1px solid var(--border-color)',
-          background: isAdmin ? 'linear-gradient(180deg, rgba(249,115,22,0.03) 0%, var(--bg-card) 100%)' : 'var(--bg-card)',
+          border: isAdminView ? '1px solid rgba(249,115,22,0.35)' : '1px solid var(--border-color)',
+          background: isAdminView ? 'linear-gradient(180deg, rgba(249,115,22,0.03) 0%, var(--bg-card) 100%)' : 'var(--bg-card)',
         }}
       >
         {/* Avatar row */}
@@ -280,7 +372,7 @@ export default function Profile() {
               width: 60,
               height: 60,
               borderRadius: '50%',
-              background: isAdmin
+              background: isAdminView
                 ? 'linear-gradient(135deg, #FF4D00, #F59E0B)'
                 : 'linear-gradient(135deg, #FF4D00, #FF8A50)',
               display: 'flex',
@@ -290,7 +382,7 @@ export default function Profile() {
               fontWeight: 800,
               color: '#fff',
               flexShrink: 0,
-              boxShadow: isAdmin ? '0 4px 18px rgba(245,158,11,0.35)' : '0 4px 14px rgba(255,77,0,0.3)',
+              boxShadow: isAdminView ? '0 4px 18px rgba(245,158,11,0.35)' : '0 4px 14px rgba(255,77,0,0.3)',
               letterSpacing: '-0.02em',
             }}
           >
@@ -382,7 +474,7 @@ export default function Profile() {
                   </button>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
-                  {isAdmin ? (
+                  {isAdminView ? (
                     <span
                       style={{
                         fontSize: '0.72rem',
@@ -419,7 +511,7 @@ export default function Profile() {
           </div>
         </div>
 
-        {/* Level progress (for regular user progress tracking) */}
+        {/* Level progress */}
         <div>
           <div
             style={{
@@ -464,15 +556,15 @@ export default function Profile() {
         </div>
       </div>
 
-      {/* ── Stats strip ──────────────────────────── */}
+      {/* ── Stats strip — responsive grid ─────────────────── */}
       <div
         className="garage-card"
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(4, 1fr)',
-          padding: '14px 8px',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(70px, 1fr))',
+          padding: '14px 6px',
           marginBottom: 12,
-          gap: 0,
+          gap: 4,
         }}
       >
         {[
@@ -488,14 +580,14 @@ export default function Profile() {
               flexDirection: 'column',
               alignItems: 'center',
               gap: 3,
-              borderRight: label !== 'Overdue' ? '1px solid var(--border-color)' : 'none',
+              padding: '0 4px',
             }}
           >
             <Icon size={16} style={{ color }} />
             <div style={{ fontWeight: 800, fontSize: '1.1rem', color: 'var(--text-primary)', lineHeight: 1.1 }}>
               {value}
             </div>
-            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em', textAlign: 'center' }}>
               {label}
             </div>
           </div>
@@ -503,7 +595,7 @@ export default function Profile() {
       </div>
 
       {/* ── ADMIN-ONLY SWITCHING OPTIONS ──────────────────── */}
-      {isAdmin ? (
+      {isAdminView ? (
         <div
           className="garage-card"
           style={{
@@ -518,6 +610,8 @@ export default function Profile() {
               alignItems: 'center',
               justifyContent: 'space-between',
               marginBottom: 10,
+              flexWrap: 'wrap',
+              gap: 6,
             }}
           >
             <div
@@ -549,7 +643,7 @@ export default function Profile() {
             </span>
           </div>
 
-          {/* 1. Image Optimizer Mode Switch (Direct solution to KB resize question) */}
+          {/* 1. Image Optimizer Mode Switch */}
           <SettingRow
             icon={Zap}
             label="Image Optimizer: 1MP Ultra-Saver"
@@ -723,7 +817,7 @@ export default function Profile() {
         </button>
 
         {/* Admin Unlock Modal / Row */}
-        {!isAdmin && (
+        {!isRealAdminUser && (
           <div style={{ paddingTop: 10 }}>
             {!showAdminLogin ? (
               <button
@@ -770,7 +864,7 @@ export default function Profile() {
                 <div style={{ fontSize: '0.78rem', fontWeight: 600, marginBottom: 6, color: 'var(--text-primary)' }}>
                   Enter Admin Credential or PIN:
                 </div>
-                <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
                   <input
                     type="password"
                     placeholder="Admin PIN (e.g. admin2026 or email)"
@@ -779,6 +873,7 @@ export default function Profile() {
                     autoFocus
                     style={{
                       flex: 1,
+                      minWidth: '160px',
                       padding: '8px 12px',
                       borderRadius: 8,
                       border: '1px solid var(--border-color)',
@@ -829,7 +924,7 @@ export default function Profile() {
       {/* Tiny version tag */}
       <div style={{ textAlign: 'center', marginBottom: 32 }}>
         <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', letterSpacing: '0.04em' }}>
-          NGINEBREAK · {isAdmin ? 'ADMIN CONSOLE ACTIVE' : 'MVP v0.1.0'}
+          NGINEBREAK · {isAdminView ? 'ADMIN CONSOLE ACTIVE' : 'MVP v0.1.0'}
         </span>
       </div>
     </div>
