@@ -155,7 +155,7 @@ function SettingRow({ icon: Icon, label, desc, right, badge }) {
 export default function Profile() {
   const { vehicles, user, currentUser, logout, updateUserProfile } = useGarage();
 
-  // Admin status, view mode, and settings (Strictly locked to wopstrat@gmail.com)
+  // Admin status, view mode, and settings (restricted to configured VITE_ADMIN_EMAIL)
   const [isRealAdminUser, setIsRealAdminUser] = useState(() => isRealAdmin(currentUser));
   const [isAdminView, setIsAdminView] = useState(() => isUserAdmin(currentUser));
   const [adminViewMode, setAdminViewModeState] = useState(() => getAdminViewMode());

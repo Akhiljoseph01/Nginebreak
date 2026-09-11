@@ -6,8 +6,9 @@ const STORAGE_KEY_ADMIN_MODE = "nginebreak_admin_mode";
 const STORAGE_KEY_ADMIN_SETTINGS = "nginebreak_admin_settings";
 const STORAGE_KEY_ADMIN_VIEW_MODE = "nginebreak_admin_view_mode"; // 'admin' | 'user'
 
-// Default admin email configured for Nginebreak
-export const DEFAULT_ADMIN_EMAIL = import.meta.env.VITE_ADMIN_EMAIL || "wopstrat@gmail.com";
+// Admin email MUST be configured via environment variable VITE_ADMIN_EMAIL
+// Never hardcode credentials in source code
+export const DEFAULT_ADMIN_EMAIL = import.meta.env.VITE_ADMIN_EMAIL || "";
 
 // Default system-wide settings configurable only by admin
 export const DEFAULT_ADMIN_SETTINGS = {
@@ -34,7 +35,7 @@ export function isUserAdmin(currentUser) {
 }
 
 /**
- * Checks if the user has Admin rights (strictly restricted to wopstrat@gmail.com)
+ * Checks if the user has Admin rights (restricted to the configured admin email)
  */
 export function isRealAdmin(currentUser) {
   const adminEmail = (import.meta.env.VITE_ADMIN_EMAIL || DEFAULT_ADMIN_EMAIL).toLowerCase().trim();
@@ -83,13 +84,14 @@ export function toggleAdminViewMode() {
 }
 
 /**
- * Activate admin mode via credential
+ * Activate admin mode via authenticated user email
+ * Only activates if the provided email matches the configured admin email
  */
-export function activateAdminMode(credentialOrPin) {
+export function activateAdminMode(authenticatedEmail) {
   const adminEmail = (import.meta.env.VITE_ADMIN_EMAIL || DEFAULT_ADMIN_EMAIL).toLowerCase().trim();
-  const cleaned = (credentialOrPin || "").trim().toLowerCase();
+  const cleaned = (authenticatedEmail || "").trim().toLowerCase();
   
-  if (cleaned === adminEmail || cleaned === "wopstrat@2002") {
+  if (adminEmail && cleaned === adminEmail) {
     localStorage.setItem(STORAGE_KEY_ADMIN_MODE, "true");
     setAdminViewMode("admin");
     window.dispatchEvent(new Event("admin_state_changed"));
