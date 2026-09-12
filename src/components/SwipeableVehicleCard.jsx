@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useGarage } from "../context/GarageContext";
-import { STATUS } from "../services/CalculationEngine";
+import { STATUS, getVehicleSummary, calculatePartLifePercent } from "../services/CalculationEngine";
 import {
   Plus,
   Gauge,
@@ -11,55 +11,62 @@ import {
   Users,
   ChevronRight,
   Trash2,
-  RotateCcw,
+  MoreVertical,
+  CheckCircle2,
+  AlertCircle,
+  Car
 } from "lucide-react";
 import "./SwipeableVehicleCard.css";
 
-// How far right the card slides and latches
-const STUCK_OFFSET = 200;
-// Min horizontal drag distance before we enter swipe mode
+const STUCK_OFFSET = 180;
 const SWIPE_THRESHOLD = 60;
-// Back-layer delete button is centred in the exposed strip (STUCK_OFFSET wide)
-const DELETE_BTN_LEFT = STUCK_OFFSET / 2; // 100px from left edge
+const DELETE_BTN_LEFT = STUCK_OFFSET / 2;
 
-export default function SwipeableVehicleCard({ vehicle }) {
-  const { deleteVehicle } = useGarage();
+export default function SwipeableVehicleCard({ vehicle, onOpenOdoModal }) {
+  const { deleteVehicle, updateOdometer } = useGarage();
+  const navigate = useNavigate();
 
   // ── State ──────────────────────────────────────────────────────
-  const [offsetX, setOffsetX]           = useState(0);
-  const [isDragging, setIsDragging]     = useState(false);
-  const [isStuck, setIsStuck]           = useState(false);
-  const [isDeleting, setIsDeleting]     = useState(false);
-  const [showModal, setShowModal]       = useState(false);
+  const [offsetX, setOffsetX] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isStuck, setIsStuck] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const [showQuickOdo, setShowQuickOdo] = useState(false);
+  const [newOdoVal, setNewOdoVal] = useState(vehicle?.current_odometer || 0);
+  const [savingOdo, setSavingOdo] = useState(false);
+
   // cursor-glow position (relative %)
-  const [glowPos, setGlowPos]           = useState({ x: 50, y: 50 });
-  const [glowVisible, setGlowVisible]   = useState(false);
+  const [glowPos, setGlowPos] = useState({ x: 50, y: 50 });
+  const [glowVisible, setGlowVisible] = useState(false);
 
   // ── Refs ───────────────────────────────────────────────────────
-  const startXRef       = useRef(0);
-  const startYRef       = useRef(0);
-  const maxDeltaX       = useRef(0);   // track max horizontal movement per gesture
-  const isHorizRef      = useRef(false);
-  const draggingRef     = useRef(false); // sync ref (avoid stale closure in move)
-  const wrapperRef      = useRef(null);
+  const startXRef = useRef(0);
+  const startYRef = useRef(0);
+  const maxDeltaX = useRef(0);
+  const isHorizRef = useRef(false);
+  const draggingRef = useRef(false);
+  const wrapperRef = useRef(null);
 
-  // ── Vehicle data ───────────────────────────────────────────────
-  const mods      = vehicle.maintenance_modules || [];
-  const members   = vehicle.members || [];
-  const overdue   = mods.filter(m => m.status === STATUS.OVERDUE).length;
-  const dueSoon   = mods.filter(m => m.status === STATUS.DUE_SOON).length;
+  // ── Vehicle data & Calculation helpers ──────────────────────────
+  const mods = vehicle.maintenance_modules || [];
+  const members = vehicle.members || [];
+  const summary = getVehicleSummary(vehicle);
 
-  const urgentMods   = mods.filter(m => m.status === STATUS.OVERDUE || m.status === STATUS.DUE_SOON).slice(0, 3);
-  const allUpcoming  = mods.filter(m => m.status === STATUS.UPCOMING).slice(0, 3 - urgentMods.length);
-  const displayMods  = [...urgentMods, ...allUpcoming].slice(0, 3);
+  // Find next maintenance item
+  const sortedMods = [...mods].sort((a, b) => {
+    const lifeA = calculatePartLifePercent(a, vehicle.current_odometer);
+    const lifeB = calculatePartLifePercent(b, vehicle.current_odometer);
+    return lifeA - lifeB;
+  });
+  const nextMod = sortedMods[0];
 
-  // ── Helpers ────────────────────────────────────────────────────
   const closeCard = () => {
     setOffsetX(0);
     setIsStuck(false);
   };
 
-  // ── Cursor glow (desktop mouse) ────────────────────────────────
   const handleMouseMove = useCallback((e) => {
     const rect = wrapperRef.current?.getBoundingClientRect();
     if (!rect) return;
@@ -68,19 +75,16 @@ export default function SwipeableVehicleCard({ vehicle }) {
     setGlowPos({ x, y });
   }, []);
 
-  // ── Touch / pointer drag handlers ─────────────────────────────
-  // We use separate mouse and touch handlers so they don't collide.
-
   /* ---- MOUSE ---- */
   const onMouseDown = (e) => {
-    if (e.target.closest("a") || e.target.closest("button") || e.target.closest("input")) return;
+    if (e.target.closest("a") || e.target.closest("button") || e.target.closest("input") || e.target.closest(".vehicle-menu-dropdown")) return;
     if (isStuck) { closeCard(); return; }
 
     draggingRef.current = true;
     setIsDragging(true);
-    startXRef.current  = e.clientX;
-    startYRef.current  = e.clientY;
-    maxDeltaX.current  = 0;
+    startXRef.current = e.clientX;
+    startYRef.current = e.clientY;
+    maxDeltaX.current = 0;
     isHorizRef.current = false;
   };
 
@@ -98,7 +102,7 @@ export default function SwipeableVehicleCard({ vehicle }) {
     maxDeltaX.current = Math.max(maxDeltaX.current, diffX);
     if (diffX > 0) {
       const clamped = diffX > STUCK_OFFSET ? STUCK_OFFSET + (diffX - STUCK_OFFSET) * 0.3 : diffX;
-      setOffsetX(Math.min(clamped, 260));
+      setOffsetX(Math.min(clamped, 240));
     } else {
       setOffsetX(0);
     }
@@ -118,19 +122,14 @@ export default function SwipeableVehicleCard({ vehicle }) {
   };
 
   /* ---- TOUCH ---- */
-  const touchStartTime = useRef(0);
-
   const onTouchStart = (e) => {
-    if (e.target.closest("a") || e.target.closest("button") || e.target.closest("input")) return;
+    if (e.target.closest("a") || e.target.closest("button") || e.target.closest("input") || e.target.closest(".vehicle-menu-dropdown")) return;
+    if (isStuck) return;
 
-    // If already stuck: first touch ONLY focuses (records start pos), second swipe-back closes
-    if (isStuck) return; // let user swipe back themselves to close
-
-    touchStartTime.current = Date.now();
-    draggingRef.current = false; // don't start dragging immediately
-    startXRef.current  = e.touches[0].clientX;
-    startYRef.current  = e.touches[0].clientY;
-    maxDeltaX.current  = 0;
+    draggingRef.current = false;
+    startXRef.current = e.touches[0].clientX;
+    startYRef.current = e.touches[0].clientY;
+    maxDeltaX.current = 0;
     isHorizRef.current = false;
   };
 
@@ -138,17 +137,15 @@ export default function SwipeableVehicleCard({ vehicle }) {
     const diffX = e.touches[0].clientX - startXRef.current;
     const diffY = e.touches[0].clientY - startYRef.current;
 
-    // Determine gesture direction if not yet decided
     if (!isHorizRef.current) {
       if (Math.abs(diffX) > 10 && Math.abs(diffX) > Math.abs(diffY) * 1.5) {
         isHorizRef.current = true;
         draggingRef.current = true;
         setIsDragging(true);
       } else if (Math.abs(diffY) > 10) {
-        // Vertical scroll intent — bail
         return;
       } else {
-        return; // not decided yet, wait
+        return;
       }
     }
 
@@ -158,30 +155,26 @@ export default function SwipeableVehicleCard({ vehicle }) {
     maxDeltaX.current = Math.max(maxDeltaX.current, diffX);
 
     if (isStuck) {
-      // When stuck, only allow sliding BACK (left) to close
       if (diffX < 0) {
         const newOffset = Math.max(0, STUCK_OFFSET + diffX);
         setOffsetX(newOffset);
       }
     } else {
-      // Not stuck: only allow sliding RIGHT to open
       if (diffX > 0) {
         const clamped = diffX > STUCK_OFFSET ? STUCK_OFFSET + (diffX - STUCK_OFFSET) * 0.3 : diffX;
-        setOffsetX(Math.min(clamped, 260));
+        setOffsetX(Math.min(clamped, 240));
       }
     }
   };
 
-  const onTouchEnd = (e) => {
+  const onTouchEnd = () => {
     const wasDragging = draggingRef.current;
     draggingRef.current = false;
     setIsDragging(false);
 
-    // Pure tap detection: if no meaningful drag happened, ignore (mobile first-tap behaviour)
     if (!wasDragging) return;
 
     if (isStuck) {
-      // Was sliding back: if released past mid-point, close; otherwise re-latch
       if (offsetX < STUCK_OFFSET * 0.5) {
         closeCard();
       } else {
@@ -197,7 +190,6 @@ export default function SwipeableVehicleCard({ vehicle }) {
     }
   };
 
-  // ── Horizontal trackpad wheel ──────────────────────────────────
   const onWheel = (e) => {
     if (Math.abs(e.deltaX) > 30) {
       if (e.deltaX < -30 && !isStuck) { setOffsetX(STUCK_OFFSET); setIsStuck(true); }
@@ -205,46 +197,49 @@ export default function SwipeableVehicleCard({ vehicle }) {
     }
   };
 
-  // ── Delete flow ────────────────────────────────────────────────
   const handleDeleteClick = (e) => {
     e.stopPropagation();
     e.preventDefault();
     setShowModal(true);
+    setShowMenu(false);
   };
 
   const confirmDelete = async () => {
     setShowModal(false);
-    // Record current height for collapse animation
     const wrapper = wrapperRef.current;
     if (wrapper) wrapper.style.maxHeight = wrapper.offsetHeight + "px";
     setIsDeleting(true);
-    // After CSS transition (400ms), actually remove from store
     setTimeout(async () => {
       try {
         await deleteVehicle(vehicle.id);
       } catch (err) {
         console.error("[SwipeCard] delete failed:", err);
-        // Roll back
         if (wrapper) wrapper.style.maxHeight = "";
         setIsDeleting(false);
       }
     }, 420);
   };
 
-  // ── Trash button in card header (tap-to-toggle on mobile) ─────
-  const handleTrashBtn = (e) => {
-    e.stopPropagation();
-    if (isStuck) {
-      closeCard();
-    } else {
-      setOffsetX(STUCK_OFFSET);
-      setIsStuck(true);
+  const handleQuickOdoSave = async (e) => {
+    e.preventDefault();
+    const val = parseInt(newOdoVal);
+    if (!val || val <= vehicle.current_odometer) {
+      alert("New odometer must be greater than current reading.");
+      return;
+    }
+    setSavingOdo(true);
+    try {
+      await updateOdometer(vehicle.id, val);
+      setShowQuickOdo(false);
+    } catch (err) {
+      alert(err.message || "Failed to update odometer.");
+    } finally {
+      setSavingOdo(false);
     }
   };
 
   return (
     <>
-      {/* ── WRAPPER ─────────────────────────────────────────────── */}
       <div
         ref={wrapperRef}
         className={`swipe-delete-wrapper ${isDeleting ? "deleting" : ""}`}
@@ -252,19 +247,16 @@ export default function SwipeableVehicleCard({ vehicle }) {
         onMouseMove={handleMouseMove}
         onMouseEnter={() => setGlowVisible(true)}
         onMouseLeave={() => setGlowVisible(false)}
+        style={{ marginBottom: 18 }}
       >
-
-        {/* ── BACK LAYER ─────────────────────────────────────────── */}
-        {/* Delete button anchored to the LEFT of the back, in the exposed strip */}
+        {/* Back Layer Delete */}
         <div className="swipe-delete-back">
-          {/* Exposed-zone delete button — horizontally centred within the revealed strip */}
           <div
             className="delete-center-module"
             style={{ position: "absolute", left: DELETE_BTN_LEFT - 26, top: "50%", transform: "translateY(-50%)" }}
             onClick={handleDeleteClick}
             role="button"
             tabIndex={0}
-            onKeyDown={e => e.key === "Enter" && handleDeleteClick(e)}
             title="Delete vehicle"
           >
             <div className="delete-logo-btn">
@@ -274,16 +266,17 @@ export default function SwipeableVehicleCard({ vehicle }) {
           </div>
         </div>
 
-        {/* ── FRONT LAYER ─────────────────────────────────────────── */}
+        {/* Front Layer Card */}
         <div
           className={`garage-card swipe-delete-front ${isDragging ? "dragging" : ""} ${isStuck ? "stuck" : ""}`}
           style={{
-            transform:  `translateX(${offsetX}px)`,
+            transform: `translateX(${offsetX}px)`,
             marginBottom: 0,
-            padding:    0,
-            overflow:   "hidden",
+            padding: '18px 18px 16px',
+            overflow: "hidden",
             transition: isDragging ? "none" : "transform 0.32s cubic-bezier(0.25, 0.8, 0.25, 1), box-shadow 0.25s ease",
-            position:   "relative",
+            position: "relative",
+            borderRadius: 22
           }}
           onMouseDown={onMouseDown}
           onMouseMove={onMouseMove}
@@ -293,225 +286,333 @@ export default function SwipeableVehicleCard({ vehicle }) {
           onTouchMove={onTouchMove}
           onTouchEnd={onTouchEnd}
         >
-          {/* Cursor-following orange glow overlay (desktop only) */}
           {glowVisible && !isStuck && (
             <div
               aria-hidden="true"
               style={{
-                position:       "absolute",
-                inset:          0,
-                borderRadius:   "inherit",
-                pointerEvents:  "none",
-                zIndex:         3,
-                background:     `radial-gradient(circle 180px at ${glowPos.x}% ${glowPos.y}%, rgba(255,77,0,0.09) 0%, transparent 70%)`,
-                transition:     "background 0.05s linear",
+                position: "absolute",
+                inset: 0,
+                borderRadius: "inherit",
+                pointerEvents: "none",
+                zIndex: 1,
+                background: `radial-gradient(circle 180px at ${glowPos.x}% ${glowPos.y}%, rgba(255,77,0,0.08) 0%, transparent 70%)`,
+                transition: "background 0.05s linear",
               }}
             />
           )}
 
-          {/* Vehicle header */}
-          <div style={{ padding: "16px 16px 12px", borderBottom: "1px solid var(--border-color)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-              <div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                  <h3 style={{ fontWeight: 800, fontSize: "1.05rem", margin: 0, color: "var(--text-primary)" }}>
-                    {vehicle.make} {vehicle.model}
-                  </h3>
-                  <span className="shared-badge">
-                    <Users size={11} /> Shared · {members.length} member{members.length !== 1 ? "s" : ""}
-                  </span>
-                </div>
-                <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)" }}>
-                  {vehicle.year} &bull; {vehicle.type}
-                </div>
-              </div>
-
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                {/* Trash toggle button — tap once to open delete mode */}
-                <button
-                  type="button"
-                  title={isStuck ? "Close delete mode" : "Reveal delete"}
-                  onClick={handleTrashBtn}
+          {/* Top Section: Vehicle Image/Badge + Name & Year + 3-dots */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              {/* Photo or Car Icon */}
+              {vehicle.photo_url || (vehicle.media && vehicle.media[0]?.url) ? (
+                <img
+                  src={vehicle.photo_url || vehicle.media[0]?.url}
+                  alt={vehicle.model}
                   style={{
-                    background:   isStuck ? "rgba(239,68,68,0.12)" : "var(--bg-input)",
-                    border:       isStuck ? "1px solid rgba(239,68,68,0.3)" : "1px solid var(--border-color)",
-                    color:        isStuck ? "var(--danger-color)" : "var(--text-muted)",
-                    borderRadius: 8,
-                    padding:      "5px 7px",
-                    cursor:       "pointer",
-                    display:      "flex",
-                    alignItems:   "center",
-                    transition:   "all 0.18s ease",
+                    width: 58,
+                    height: 58,
+                    borderRadius: 14,
+                    objectFit: "cover",
+                    border: "1px solid var(--border-color)",
+                    flexShrink: 0
                   }}
-                >
-                  <Trash2 size={13} />
-                </button>
+                />
+              ) : (
+                <div style={{
+                  width: 54,
+                  height: 54,
+                  borderRadius: 14,
+                  background: 'rgba(249,115,22,0.1)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '1.6rem',
+                  flexShrink: 0
+                }}>
+                  🚗
+                </div>
+              )}
 
-                <Link
-                  to={`/vehicle/${vehicle.id}`}
-                  style={{ display: "flex", alignItems: "center", color: "var(--accent-color)", fontSize: "0.78rem", fontWeight: 600, gap: 2 }}
-                >
-                  View <ChevronRight size={14} />
-                </Link>
+              <div>
+                <h3 style={{ fontWeight: 800, fontSize: "1.1rem", margin: "0 0 2px", color: "var(--text-primary)" }}>
+                  {vehicle.make} {vehicle.model}
+                </h3>
+                <div style={{ fontSize: "0.82rem", color: "var(--text-secondary)", marginBottom: 4 }}>
+                  {vehicle.year} &bull; {vehicle.fuel_type || vehicle.type || 'Petrol'}
+                </div>
+                {members.length > 0 && (
+                  <span className="shared-badge" style={{ fontSize: '0.72rem', padding: '2px 8px' }}>
+                    <Users size={11} /> Shared &bull; {members.length} Member{members.length !== 1 ? 's' : ''}
+                  </span>
+                )}
               </div>
             </div>
 
-            {/* Odometer */}
-            <div className="odometer-display">
-              <Gauge size={16} style={{ color: "var(--accent-color)", flexShrink: 0 }} />
+            {/* 3-dots Menu */}
+            <div style={{ position: "relative" }}>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowMenu(s => !s);
+                }}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  color: "var(--text-muted)",
+                  padding: 6,
+                  borderRadius: 8
+                }}
+              >
+                <MoreVertical size={18} />
+              </button>
+
+              {showMenu && (
+                <div
+                  className="vehicle-menu-dropdown"
+                  onClick={e => e.stopPropagation()}
+                  style={{
+                    position: "absolute",
+                    right: 0,
+                    top: 32,
+                    background: "var(--bg-card)",
+                    border: "1px solid var(--border-color)",
+                    borderRadius: 12,
+                    padding: "6px 0",
+                    minWidth: 160,
+                    boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
+                    zIndex: 20
+                  }}
+                >
+                  <Link
+                    to={`/vehicle/${vehicle.id}`}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "8px 14px",
+                      color: "var(--text-primary)",
+                      fontSize: "0.82rem",
+                      textDecoration: "none"
+                    }}
+                    onClick={() => setShowMenu(false)}
+                  >
+                    View Vehicle
+                  </Link>
+                  <Link
+                    to={`/odometer-history/${vehicle.id}`}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "8px 14px",
+                      color: "var(--text-primary)",
+                      fontSize: "0.82rem",
+                      textDecoration: "none"
+                    }}
+                    onClick={() => setShowMenu(false)}
+                  >
+                    Odometer History
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={handleDeleteClick}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      width: "100%",
+                      padding: "8px 14px",
+                      color: "var(--danger-color)",
+                      fontSize: "0.82rem",
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      textAlign: "left"
+                    }}
+                  >
+                    <Trash2 size={13} /> Delete Vehicle
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Odometer Display Box with View / Update button */}
+          <div
+            style={{
+              background: 'var(--bg-secondary, rgba(255,255,255,0.03))',
+              borderRadius: 14,
+              padding: '12px 14px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 12,
+              border: '1px solid var(--border-color)'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <Gauge size={20} style={{ color: 'var(--accent-color)' }} />
               <div>
-                <div style={{ fontWeight: 800, fontSize: "1.25rem", color: "var(--text-primary)", lineHeight: 1 }}>
+                <div style={{ fontWeight: 800, fontSize: '1.25rem', color: 'var(--text-primary)', lineHeight: 1.1 }}>
                   {vehicle.current_odometer?.toLocaleString()} km
                 </div>
-                <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: 1 }}>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
                   Current Odometer
                 </div>
               </div>
             </div>
 
-            {/* Alert strip */}
-            {(overdue > 0 || dueSoon > 0) && (
-              <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-                {overdue > 0 && (
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 20, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "var(--danger-color)", fontSize: "0.72rem", fontWeight: 600 }}>
-                    <AlertTriangle size={11} /> {overdue} overdue
-                  </span>
-                )}
-                {dueSoon > 0 && (
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 20, background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)", color: "var(--warning-color)", fontSize: "0.72rem", fontWeight: 600 }}>
-                    <Clock size={11} /> {dueSoon} due soon
-                  </span>
-                )}
-              </div>
-            )}
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onOpenOdoModal) onOpenOdoModal(vehicle);
+                  else setShowQuickOdo(s => !s);
+                }}
+                style={{ fontSize: '0.76rem', padding: '5px 10px', borderRadius: 8 }}
+              >
+                Update
+              </button>
+              <Link
+                to={`/vehicle/${vehicle.id}`}
+                className="btn-secondary"
+                style={{
+                  fontSize: '0.76rem',
+                  padding: '5px 10px',
+                  borderRadius: 8,
+                  textDecoration: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 2
+                }}
+              >
+                View <ChevronRight size={12} />
+              </Link>
+            </div>
           </div>
 
-          {/* Next maintenance items */}
-          {displayMods.length > 0 && (
-            <div style={{ padding: "12px 16px 4px" }}>
-              <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 8 }}>
-                Next Maintenance
-              </div>
-              {displayMods.map((mod) => {
-                const isOver = mod.status === STATUS.OVERDUE;
-                const isSoon = mod.status === STATUS.DUE_SOON;
-                const color  = isOver ? "var(--danger-color)" : isSoon ? "var(--warning-color)" : "var(--success-color)";
-                const remaining =
-                  mod.remaining_km != null
-                    ? mod.remaining_km > 0
-                      ? `${mod.remaining_km.toLocaleString()} km remaining`
-                      : `Overdue by ${Math.abs(mod.remaining_km).toLocaleString()} km`
-                    : mod.remaining_days != null
-                      ? mod.remaining_days > 0
-                        ? `${mod.remaining_days} days remaining`
-                        : `${Math.abs(mod.remaining_days)} days overdue`
-                      : "";
-                return (
-                  <div key={mod.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: "1px solid var(--border-color)" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <Wrench size={13} style={{ color, flexShrink: 0 }} />
-                      <span style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text-primary)" }}>{mod.name}</span>
-                    </div>
-                    <span style={{ fontSize: "0.75rem", color, fontWeight: 600 }}>{remaining}</span>
-                  </div>
-                );
-              })}
-            </div>
+          {/* Quick inline odo form */}
+          {showQuickOdo && (
+            <form onSubmit={handleQuickOdoSave} style={{ marginBottom: 12, display: 'flex', gap: 8 }}>
+              <input
+                type="number"
+                className="form-control"
+                style={{ fontSize: '0.82rem', padding: '6px 10px' }}
+                placeholder={`> ${vehicle.current_odometer} km`}
+                value={newOdoVal}
+                onChange={e => setNewOdoVal(e.target.value)}
+                required
+              />
+              <button
+                type="submit"
+                disabled={savingOdo}
+                className="btn-orange"
+                style={{ fontSize: '0.78rem', padding: '6px 12px' }}
+              >
+                {savingOdo ? 'Saving…' : 'Save'}
+              </button>
+            </form>
           )}
 
-          {/* Action buttons */}
-          <div style={{ display: "flex", gap: 10, padding: "14px 16px" }}>
-            <Link
-              to={`/vehicle/${vehicle.id}`}
-              className="btn-orange"
-              style={{ flex: 1, justifyContent: "center", fontSize: "0.82rem", padding: "9px 12px" }}
-              onClick={() => sessionStorage.setItem("openOdoModal", "1")}
-            >
-              <Gauge size={14} /> Update Odometer
-            </Link>
-            <Link
-              to={`/vehicle/${vehicle.id}/add-maintenance`}
-              className="btn-ghost"
-              style={{ flex: 1, justifyContent: "center", fontSize: "0.82rem", padding: "9px 12px" }}
-            >
-              <Plus size={14} /> Add Maintenance
-            </Link>
+          {/* Option 3 Human Language Status Banner */}
+          <div
+            style={{
+              background: summary.type === 'overdue'
+                ? 'rgba(239,68,68,0.08)'
+                : summary.type === 'due_soon'
+                  ? 'rgba(245,158,11,0.08)'
+                  : 'rgba(16,185,129,0.08)',
+              border: summary.type === 'overdue'
+                ? '1px solid rgba(239,68,68,0.2)'
+                : summary.type === 'due_soon'
+                  ? '1px solid rgba(245,158,11,0.2)'
+                  : '1px solid rgba(16,185,129,0.2)',
+              borderRadius: 12,
+              padding: '10px 12px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              fontSize: '0.8rem',
+              lineHeight: 1.4,
+              marginBottom: 12
+            }}
+          >
+            {summary.type === 'overdue' ? (
+              <AlertTriangle size={16} style={{ color: 'var(--danger-color)', flexShrink: 0 }} />
+            ) : summary.type === 'due_soon' ? (
+              <AlertCircle size={16} style={{ color: 'var(--warning-color)', flexShrink: 0 }} />
+            ) : (
+              <CheckCircle2 size={16} style={{ color: 'var(--success-color)', flexShrink: 0 }} />
+            )}
+            <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>
+              {summary.text}
+            </span>
           </div>
 
-          {/* Odometer History link */}
-          <div style={{ padding: "0 16px 14px" }}>
-            <Link
-              to={`/odometer-history/${vehicle.id}`}
-              style={{ display: "flex", alignItems: "center", gap: 4, color: "var(--text-secondary)", fontSize: "0.78rem", fontWeight: 500 }}
-            >
-              <Clock size={13} />
-              View Odometer History
-              <ChevronRight size={13} style={{ marginLeft: "auto" }} />
-            </Link>
-          </div>
-
-          {/* Slide-back hint shown when stuck */}
-          {isStuck && (
+          {/* Minimal Next Maintenance item if exists */}
+          {nextMod && (
             <div
               style={{
-                position:       "absolute",
-                bottom:         8,
-                left:           "50%",
-                transform:      "translateX(-50%)",
-                background:     "rgba(0,0,0,0.55)",
-                color:          "#fff",
-                fontSize:       "0.65rem",
-                fontWeight:     600,
-                padding:        "4px 12px",
-                borderRadius:   20,
-                display:        "flex",
-                alignItems:     "center",
-                gap:            5,
-                pointerEvents:  "none",
-                letterSpacing:  "0.03em",
-                backdropFilter: "blur(4px)",
-                zIndex:         5,
+                borderTop: '1px solid var(--border-color)',
+                paddingTop: 10,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
               }}
             >
-              <RotateCcw size={10} /> Swipe left or tap 🗑 to cancel
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Wrench size={14} style={{ color: 'var(--accent-color)' }} />
+                <div>
+                  <span style={{ fontWeight: 600, fontSize: '0.84rem', color: 'var(--text-primary)' }}>
+                    {nextMod.name}
+                  </span>
+                  <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginLeft: 6 }}>
+                    {nextMod.remaining_km !== null ? `${nextMod.remaining_km.toLocaleString()} km remaining` : ''}
+                  </span>
+                </div>
+              </div>
+              <Link
+                to={`/vehicle/${vehicle.id}`}
+                style={{ fontSize: '0.75rem', color: 'var(--accent-color)', fontWeight: 600, textDecoration: 'none' }}
+              >
+                View all &gt;
+              </Link>
             </div>
           )}
         </div>
       </div>
 
-      {/* ── CONFIRMATION MODAL ────────────────────────────────────── */}
+      {/* Delete Confirmation Modal */}
       {showModal && (
-        <div
-          className="delete-modal-overlay"
-          onClick={() => setShowModal(false)}
-        >
-          <div
-            className="delete-modal-dialog"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="delete-modal-icon">
-              <Trash2 size={26} />
+        <div className="modal-backdrop" onClick={() => setShowModal(false)} style={{ zIndex: 1200 }}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">Delete Vehicle</h3>
             </div>
-            <div className="delete-modal-title">Delete Vehicle?</div>
-            <div className="delete-modal-desc">
-              <strong>{vehicle.make} {vehicle.model}</strong> and all its odometer history, maintenance schedules, and service records will be permanently removed.
-            </div>
-            <div className="delete-modal-actions">
+            <p style={{ color: "var(--text-secondary)", fontSize: "0.88rem", lineHeight: 1.5, margin: "0 0 20px" }}>
+              Are you sure you want to delete <strong>{vehicle.make} {vehicle.model}</strong>? This will remove all maintenance records and history.
+            </p>
+            <div style={{ display: "flex", gap: 10 }}>
               <button
                 type="button"
-                className="btn-ghost"
+                className="btn-danger"
+                style={{ flex: 1, justifyContent: "center" }}
+                onClick={confirmDelete}
+              >
+                Yes, Delete
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
                 style={{ flex: 1, justifyContent: "center" }}
                 onClick={() => setShowModal(false)}
               >
                 Cancel
-              </button>
-              <button
-                type="button"
-                className="btn-orange"
-                style={{ flex: 1, justifyContent: "center", background: "var(--danger-color)", borderColor: "var(--danger-color)" }}
-                onClick={confirmDelete}
-              >
-                <Trash2 size={15} /> Yes, Delete
               </button>
             </div>
           </div>

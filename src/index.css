@@ -1299,3 +1299,59 @@ a { text-decoration: none; }
   border-radius: 4px;
   transition: width 0.4s ease;
 }
+
+/* ============================================================
+   MODERN DASHBOARD & CALCULATION UI STYLES
+   ============================================================ */
+
+/* Expand max-width on dashboard page for desktop dual-column layout */
+@media (min-width: 1024px) {
+  .dashboard-page.app-container {
+    max-width: 1120px !important;
+  }
+  .dashboard-grid-layout {
+    display: grid !important;
+    grid-template-columns: 1.35fr 0.95fr !important;
+    gap: 24px !important;
+    align-items: start !important;
+  }
+}
+
+@media (max-width: 1023px) {
+  .dashboard-grid-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+}
+
+@media (max-width: 768px) {
+  .desktop-search-container {
+    display: none !important;
+  }
+}
+
+.maintenance-battery-card:hover {
+  border-color: var(--border-hover) !important;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.06) !important;
+  transform: translateY(-1px);
+}
+
+.coming-soon-feature-card {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.coming-soon-feature-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.05);
+}
+
+@keyframes pulseGlow {
+  0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.4); }
+  70% { transform: scale(1.03); box-shadow: 0 0 0 6px rgba(249, 115, 22, 0); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(249, 115, 22, 0); }
+}
+
+.expires-first-badge {
+  animation: pulseGlow 2s infinite ease-in-out;
+}
+

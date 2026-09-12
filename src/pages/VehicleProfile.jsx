@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useGarage } from "../context/GarageContext";
 import MaintenanceCard from "../components/MaintenanceCard";
-import { STATUS } from "../services/CalculationEngine";
+import { STATUS, getPartCategory, getVehicleSummary, getVehicleFitnessStats } from "../services/CalculationEngine";
 import {
   ChevronLeft,
   Plus,
@@ -50,6 +50,8 @@ export default function VehicleProfile() {
   const vehicle = vehicles.find((v) => v.id === id);
 
   const [activeTab, setActiveTab] = useState("Overview");
+  const [partCategory, setPartCategory] = useState("All");
+  const CATEGORIES = ["All", "Engine", "Fluids", "Filters", "Brakes"];
   const [showOdoUpdate, setShowOdoUpdate] = useState(false);
   const [newOdo, setNewOdo] = useState("");
   const [saving, setSaving] = useState(false);
@@ -456,21 +458,52 @@ export default function VehicleProfile() {
       {/* ── Maintenance Tab ───────────────────── */}
       {activeTab === "Maintenance" && (
         <div>
+          {/* Option 1 Category Filter Pills */}
+          <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 12, marginBottom: 12 }}>
+            {CATEGORIES.map(cat => (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => setPartCategory(cat)}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: 20,
+                  border: partCategory === cat ? '1.5px solid var(--accent-color)' : '1px solid var(--border-color)',
+                  background: partCategory === cat ? 'rgba(249,115,22,0.12)' : 'var(--bg-card)',
+                  color: partCategory === cat ? 'var(--accent-color)' : 'var(--text-secondary)',
+                  fontWeight: partCategory === cat ? 700 : 500,
+                  fontSize: '0.78rem',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+
           {mods.length === 0 ? (
             <div className="empty-state">
               <div className="empty-icon">🔧</div>
               <h5>No maintenance schedules</h5>
               <p>Add services to track.</p>
+              <Link to={`/vehicle/${id}/add-maintenance`} className="btn-orange">
+                <Plus size={15} /> Add Maintenance
+              </Link>
             </div>
           ) : (
-            mods.map((mod) => (
-              <MaintenanceCard
-                key={mod.id}
-                mod={mod}
-                vehicleId={id}
-                currentOdometer={vehicle.current_odometer}
-              />
-            ))
+            mods
+              .filter(m => partCategory === "All" || getPartCategory(m.name) === partCategory)
+              .map((mod) => (
+                <MaintenanceCard
+                  key={mod.id}
+                  mod={mod}
+                  vehicleId={id}
+                  vehicle={vehicle}
+                  currentOdometer={vehicle.current_odometer}
+                />
+              ))
           )}
         </div>
       )}
